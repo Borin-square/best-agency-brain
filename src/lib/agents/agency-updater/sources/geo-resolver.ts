@@ -52,46 +52,47 @@ function slugify(s: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-// Google formatted address IT patterns:
+// Google formatted address IT patterns supportati:
 //   "Via Roma, 12, 60121 Ancona AN, Italia"
-//   "Corso Como 5, 20154 Milano MI, Italy"
+//   "Corso Como 5, 20154 Milano MI"
+//   "Via X, 10, 37053 Cerea VR"
 //   "Piazza Duomo, 25121 Reggio Emilia RE, Italia"
-// Cerchiamo: <CAP> <city> <PROV>, (Italia|Italy|IT)
-const ADDRESS_RE = /(\d{5})\s+([^,]+?)\s+([A-Z]{2})\s*,?\s*(?:Italia|Italy|IT)\s*$/i;
+//
+// Cerchiamo la sequenza <CAP> <città> <PROV> ovunque nella stringa. Non
+// richiediamo "Italia" a fine (Google spesso non lo mette). Validiamo PROV
+// contro la mappa per filtrare falsi positivi.
+const ADDRESS_RE = /(\d{5})\s+([^,]+?)\s+([A-Z]{2})(?=\s*(?:,|$|\s+(?:Italia|Italy|IT)\b))/;
 
-// Fallback: city + PROV senza CAP, es. "Milano MI, Italia"
-const ADDRESS_RE_NO_CAP = /(?:^|,\s*)([^,]+?)\s+([A-Z]{2})\s*,?\s*(?:Italia|Italy|IT)\s*$/i;
+// Fallback: <città> <PROV> senza CAP (raro), es. "Milano MI, Italia"
+const ADDRESS_RE_NO_CAP = /(?:^|,\s*)([A-Za-zÀ-ÿ'\s]+?)\s+([A-Z]{2})\s*,?\s*(?:Italia|Italy|IT)\s*$/i;
+
+function tryMatch(cleaned: string): { city: string; prov: string } | null {
+  const withCap = cleaned.match(ADDRESS_RE);
+  if (withCap) {
+    return { city: withCap[2].trim(), prov: withCap[3].toUpperCase() };
+  }
+  const noCap = cleaned.match(ADDRESS_RE_NO_CAP);
+  if (noCap) {
+    return { city: noCap[1].trim(), prov: noCap[2].toUpperCase() };
+  }
+  return null;
+}
 
 export function resolveItalianAddress(address: string | null | undefined): GeoResolved | null {
   if (!address || typeof address !== "string") return null;
 
   const cleaned = address.trim().replace(/\s+/g, " ");
+  const m = tryMatch(cleaned);
+  if (!m) return null;
+  if (!PROVINCE_TO_REGION[m.prov]) return null;
 
-  let city = "";
-  let prov = "";
-
-  const withCap = cleaned.match(ADDRESS_RE);
-  if (withCap) {
-    city = withCap[2].trim();
-    prov = withCap[3].toUpperCase();
-  } else {
-    const noCap = cleaned.match(ADDRESS_RE_NO_CAP);
-    if (noCap) {
-      city = noCap[1].trim();
-      prov = noCap[2].toUpperCase();
-    }
-  }
-
-  if (!prov || !PROVINCE_TO_REGION[prov]) return null;
-  if (!city) return null;
-
-  const region = PROVINCE_TO_REGION[prov];
+  const region = PROVINCE_TO_REGION[m.prov];
   return {
-    city_display: city,
+    city_display: m.city,
     region_display: region,
-    province_code: prov,
-    citta_slug: slugify(city),
+    province_code: m.prov,
+    citta_slug: slugify(m.city),
     regioni_slug: slugify(region),
-    aree: `${region}>${city}`,
+    aree: `${region}>${m.city}`,
   };
 }
