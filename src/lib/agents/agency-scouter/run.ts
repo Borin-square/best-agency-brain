@@ -66,10 +66,14 @@ function keywordVariants(kw: string, geo: string | undefined): string[] {
   return [base, `migliori ${base}`];
 }
 
-// Chiave di merge dei candidati (nome normalizzato + dominio hint quando disponibile).
+// Chiave di merge dei candidati.
+// Se url_hint punta a una directory (es. sortlist.es/agency/xxx) NON possiamo
+// usarlo come identificatore univoco perché tutti collassano su un unico
+// dominio directory. In quel caso torniamo al nome normalizzato.
 function candidateKey(name: string, urlHint: string | null): string {
   const d = normalizeDomain(urlHint);
-  return d ? `d:${d}` : `n:${normalizeAgencyName(name)}`;
+  if (d && !isDirectoryOrSocialDomain(d)) return `d:${d}`;
+  return `n:${normalizeAgencyName(name)}`;
 }
 
 export async function runAgencyScouter(ctx: AgentContext): Promise<AgentResult> {
@@ -129,7 +133,9 @@ export async function runAgencyScouter(ctx: AgentContext): Promise<AgentResult> 
   ];
   for (const src of urlSources) {
     try {
-      const scraped = await scrapeWebsite(src.url);
+      // fullContent=true → non usiamo readability, così le card di elenco
+      // (agency-cards di Sortlist/Clutch/riviste) restano nel testo.
+      const scraped = await scrapeWebsite(src.url, { fullContent: true });
       const found = await discoverCandidatesFromPage(scraped, src.type);
       ctx.log("source_scraped", { url: src.url, type: src.type, found: found.length });
       for (const c of found) {

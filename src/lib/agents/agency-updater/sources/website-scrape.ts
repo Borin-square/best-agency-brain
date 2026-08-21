@@ -94,7 +94,17 @@ export interface ScrapeResult extends ScrapedSite {
   source: "native" | "firecrawl";
 }
 
-export async function scrapeWebsite(rawUrl: string): Promise<ScrapeResult> {
+export interface ScrapeOptions {
+  // true = ottieni la pagina intera (utile per pagine elenco/directory che hanno
+  // card di risultati marcati come "chrome" dai readability parser).
+  // Default false = solo main content (più pulito per homepage aziendali).
+  fullContent?: boolean;
+}
+
+export async function scrapeWebsite(
+  rawUrl: string,
+  opts: ScrapeOptions = {},
+): Promise<ScrapeResult> {
   const url = normalizeUrl(rawUrl);
   if (!url) throw new ScrapeError("invalid_url", `URL non valido: ${rawUrl}`);
 
@@ -114,7 +124,7 @@ export async function scrapeWebsite(rawUrl: string): Promise<ScrapeResult> {
       );
     }
     try {
-      const fc = await firecrawlScrape(url);
+      const fc = await firecrawlScrape(url, { fullContent: opts.fullContent });
       return { ...fc, source: "firecrawl" };
     } catch (fcErr) {
       const fcMsg = fcErr instanceof Error ? fcErr.message : String(fcErr);

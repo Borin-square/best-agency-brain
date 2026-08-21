@@ -33,7 +33,14 @@ export function hasFirecrawl(): boolean {
   return Boolean(process.env.FIRECRAWL_API_KEY);
 }
 
-export async function firecrawlScrape(url: string): Promise<ScrapedSite> {
+export interface FirecrawlScrapeOptions {
+  fullContent?: boolean; // true → onlyMainContent=false (utile per pagine elenco/directory)
+}
+
+export async function firecrawlScrape(
+  url: string,
+  opts: FirecrawlScrapeOptions = {},
+): Promise<ScrapedSite> {
   const apiKey = process.env.FIRECRAWL_API_KEY;
   if (!apiKey) throw new ScrapeError("no_firecrawl_key", "FIRECRAWL_API_KEY non configurata");
 
@@ -53,7 +60,7 @@ export async function firecrawlScrape(url: string): Promise<ScrapedSite> {
         body: JSON.stringify({
           url,
           formats: ["markdown"],
-          onlyMainContent: true,
+          onlyMainContent: !opts.fullContent,
         }),
       });
     } catch (err) {
