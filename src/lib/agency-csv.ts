@@ -2,8 +2,29 @@
 // Usato sia dallo script CLI (scripts/import-csv.ts) sia dalla route API
 // (/api/agencies/import) per garantire mapping consistente.
 
-// ---- Parser CSV minimalista (gestisce quote, newline dentro campo, "" escape) ----
+// Auto-detect separatore analizzando la prima riga (fino a 2000 chars).
+// Supporta virgola, punto e virgola (Excel IT/EU), tab.
+function detectSeparator(text: string): "," | ";" | "\t" {
+  const sample = text.slice(0, 2000);
+  const firstLineEnd = sample.indexOf("\n");
+  const firstLine = firstLineEnd === -1 ? sample : sample.slice(0, firstLineEnd);
+
+  const counts: Record<string, number> = { ",": 0, ";": 0, "\t": 0 };
+  let inQuotes = false;
+  for (const c of firstLine) {
+    if (c === '"') inQuotes = !inQuotes;
+    else if (!inQuotes && c in counts) counts[c]++;
+  }
+  const best = (Object.keys(counts) as Array<"," | ";" | "\t">).reduce((a, b) =>
+    counts[a] >= counts[b] ? a : b,
+  );
+  return counts[best] > 0 ? best : ",";
+}
+
+// ---- Parser CSV minimalista (auto-detect separatore, gestisce quote + newline dentro campo + "" escape) ----
 export function parseCsv(text: string): Record<string, string>[] {
+  const sep = detectSeparator(text);
+
   const rows: string[][] = [];
   let row: string[] = [];
   let field = "";
@@ -23,7 +44,7 @@ export function parseCsv(text: string): Record<string, string>[] {
     } else {
       if (c === '"') {
         inQuotes = true;
-      } else if (c === ",") {
+      } else if (c === sep) {
         row.push(field);
         field = "";
       } else if (c === "\r") {
