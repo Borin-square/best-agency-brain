@@ -1,11 +1,20 @@
 import type { AgentContext, AgentResult } from "../framework";
+import { findPlace, type PlacesResult } from "./sources/google-places";
 
-const BATCH_SIZE = 20;
+const BATCH_SIZE = 30;
 const REFRESH_DAYS = 30;
 
-// Placeholder: seleziona batch di agenzie da arricchire e aggiorna last_enriched_at.
-// Le integrazioni reali (Firecrawl / Google Places / VIES / Claude) sono in sources/*.ts
-// e vanno cablate qui una volta pronte le API key.
+interface AgencyRow {
+  id: string;
+  wp_id: number | null;
+  title: string;
+  citta: string | null;
+  sito_web: string | null;
+  partita_iva: string | null;
+  google_place_id: string | null;
+  last_enriched_at: string | null;
+}
+
 export async function runAgencyUpdater(ctx: AgentContext): Promise<AgentResult> {
   ctx.log("start", { batchSize: BATCH_SIZE, refreshDays: REFRESH_DAYS });
 
@@ -18,13 +27,13 @@ export async function runAgencyUpdater(ctx: AgentContext): Promise<AgentResult> 
     .or(`last_enriched_at.is.null,last_enriched_at.lt.${cutoff.toISOString()}`)
     .neq("publish_status", "trash")
     .order("last_enriched_at", { ascending: true, nullsFirst: true })
-    .limit(BATCH_SIZE);
+    .limit(BATCH_SIZE)
+    .returns<AgencyRow[]>();
 
   if (error) {
     ctx.log("select_error", { error: error.message });
     return { status: "error", rowsProcessed: 0, rowsSuccess: 0, rowsError: 0 };
   }
-
   if (!agencies || agencies.length === 0) {
     ctx.log("no_agencies_to_enrich");
     return { status: "success", rowsProcessed: 0, rowsSuccess: 0, rowsError: 0 };
@@ -34,55 +43,105 @@ export async function runAgencyUpdater(ctx: AgentContext): Promise<AgentResult> 
 
   let success = 0;
   let errorCount = 0;
+  let placesHits = 0;
+  let placesMisses = 0;
 
   for (const agency of agencies) {
-    try {
-      // TODO: chiamare sources/firecrawl.ts (sito_web), sources/google-places.ts (title + citta),
-      // sources/vies.ts (partita_iva), sources/claude-normalize.ts per merge finale.
-      // Per ora placeholder: aggiorna solo last_enriched_at.
-      const { error: updateErr } = await ctx.supabase
-        .from("agencies")
-        .update({
-          last_enriched_at: new Date().toISOString(),
-          enrichment_status: "success",
-          sources_used: {
-            firecrawl: false,
-            google_places: false,
-            vies: false,
-            claude: false,
-            note: "placeholder — sources not implemented yet",
-          },
-        })
-        .eq("id", agency.id);
+    const itemStart = Date.now();
+    let placesData: PlacesResult | null = null;
+    let placesStatus: number | "error" = 0;
+    let itemError: string | null = null;
 
-      if (updateErr) throw updateErr;
+    // ---- Google Places ----
+    try {
+      placesData = await findPlace(agency.title, agency.citta);
+      placesStatus = placesData ? 200 : 404;
+      if (placesData) placesHits++;
+      else placesMisses++;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      itemError = `google_places: ${msg}`;
+      placesStatus = "error";
+      ctx.log("places_error", { agencyId: agency.id, wpId: agency.wp_id, error: msg });
+    }
+
+    // ---- Build update payload ----
+    const updateFields: Record<string, unknown> = {
+      last_enriched_at: new Date().toISOString(),
+      sources_used: { google_places: placesStatus === 200 },
+    };
+    const updated: string[] = ["last_enriched_at", "sources_used"];
+
+    if (placesData) {
+      const map: Array<[keyof PlacesResult, string]> = [
+        ["place_id", "google_place_id"],
+        ["address", "google_indirizzo"],
+        ["phone", "google_telefono"],
+        ["website", "google_sito"],
+        ["category", "google_categoria"],
+        ["rating", "google_rating"],
+        ["reviews_count", "google_recensioni_count"],
+        ["photo_name", "google_foto_url"],
+      ];
+      for (const [src, dbCol] of map) {
+        const v = placesData[src];
+        if (v !== null && v !== undefined && v !== "") {
+          updateFields[dbCol] = v;
+          updated.push(dbCol);
+        }
+      }
+      updateFields.match_confidence = placesData.match_confidence;
+      updated.push("match_confidence");
+      updateFields.enrichment_status = "success";
+    } else {
+      updateFields.enrichment_status = placesStatus === "error" ? "error" : "partial";
+    }
+
+    if (itemError) {
+      updateFields.enrichment_errors = { message: itemError };
+    }
+
+    // ---- Persist ----
+    try {
+      const { error: updErr } = await ctx.supabase
+        .from("agencies")
+        .update(updateFields)
+        .eq("id", agency.id);
+      if (updErr) throw updErr;
 
       await ctx.supabase.from("agent_run_items").insert({
         run_id: ctx.runId,
         agency_id: agency.id,
-        status: "success",
-        fields_updated: ["last_enriched_at", "enrichment_status", "sources_used"],
+        status: placesStatus === "error" ? "error" : "success",
+        sources_hit: { google_places: placesStatus },
+        fields_updated: updated,
+        errors: itemError ? { message: itemError } : null,
+        duration_ms: Date.now() - itemStart,
       });
-      success++;
+
+      if (placesStatus === "error") errorCount++;
+      else success++;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      ctx.log("agency_error", { agencyId: agency.id, wpId: agency.wp_id, error: msg });
+      ctx.log("update_error", { agencyId: agency.id, error: msg });
       await ctx.supabase.from("agent_run_items").insert({
         run_id: ctx.runId,
         agency_id: agency.id,
         status: "error",
         errors: { message: msg },
+        duration_ms: Date.now() - itemStart,
       });
       errorCount++;
     }
   }
 
-  ctx.log("batch_complete", { success, errorCount });
+  ctx.log("batch_complete", { success, errorCount, placesHits, placesMisses });
 
   return {
     status: errorCount === 0 ? "success" : success > 0 ? "partial" : "error",
     rowsProcessed: agencies.length,
     rowsSuccess: success,
     rowsError: errorCount,
+    meta: { placesHits, placesMisses, batchSize: BATCH_SIZE },
   };
 }
