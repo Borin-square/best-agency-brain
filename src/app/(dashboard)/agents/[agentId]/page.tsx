@@ -128,7 +128,11 @@ export default function AgentDetailPage({
               </tr>
             ) : (
               detail.runs.map((r) => (
-                <tr key={r.id}>
+                <tr
+                  key={r.id}
+                  onClick={() => (window.location.href = `/agents/${agentId}/runs/${r.id}`)}
+                  style={{ cursor: "pointer" }}
+                >
                   <td>{new Date(r.started_at).toLocaleString("it-IT")}</td>
                   <td>
                     <code style={{ fontSize: 11 }}>{r.triggered_by}</code>
