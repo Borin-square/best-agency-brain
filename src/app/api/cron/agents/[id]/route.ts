@@ -2,6 +2,9 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getAgent } from "@/lib/agents/registry";
 import { runAgent } from "@/lib/agents/framework";
 
+export const runtime = "nodejs";
+export const maxDuration = 600;
+
 // Cron endpoint chiamato da Vercel Cron.
 // Autenticato via header Authorization: Bearer <CRON_SECRET>
 export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {

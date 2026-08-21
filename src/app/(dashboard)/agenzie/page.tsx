@@ -54,6 +54,8 @@ export default function AgenziePage() {
   const [q, setQ] = useState("");
   const [enriched, setEnriched] = useState<"" | "yes" | "no">("");
   const [showUpload, setShowUpload] = useState(false);
+  const [exportUrl, setExportUrl] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const loadStats = useCallback(async () => {
     const res = await fetch("/api/agencies/stats");
@@ -75,6 +77,32 @@ export default function AgenziePage() {
   useEffect(() => {
     loadList();
   }, [loadList]);
+
+  const loadExportUrl = useCallback(async () => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    if (!token) return;
+    const res = await fetch("/api/agencies/export-url", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) {
+      const data = (await res.json()) as { url: string };
+      setExportUrl(data.url);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (showUpload && !exportUrl) loadExportUrl();
+  }, [showUpload, exportUrl, loadExportUrl]);
+
+  async function copyExportUrl() {
+    if (!exportUrl) return;
+    await navigator.clipboard.writeText(exportUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -116,7 +144,7 @@ export default function AgenziePage() {
           <p className="muted">Directory miglioreagenzia.it — {stats?.total ?? "…"} record totali.</p>
         </div>
         <button className="btn" onClick={() => setShowUpload((s) => !s)}>
-          {showUpload ? "Chiudi import" : "Import CSV"}
+          {showUpload ? "Chiudi" : "Import / Export CSV"}
         </button>
       </div>
 
@@ -143,6 +171,57 @@ export default function AgenziePage() {
       {/* Upload (collassabile) */}
       {showUpload && (
         <div className="cd" style={{ marginTop: 20 }}>
+          <div className="lb">Export CSV → WP All Import</div>
+          <p className="muted" style={{ marginTop: 4, marginBottom: 10 }}>
+            URL pubblico da incollare in WP All Import (schedulazione automatica lato WP).
+          </p>
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              alignItems: "center",
+              marginBottom: 20,
+              paddingBottom: 20,
+              borderBottom: "1px solid var(--bd)",
+            }}
+          >
+            <input
+              type="text"
+              value={exportUrl ?? "Caricamento…"}
+              readOnly
+              onFocus={(e) => e.currentTarget.select()}
+              style={{
+                flex: 1,
+                padding: "8px 12px",
+                background: "var(--bg3)",
+                border: "1px solid var(--bd)",
+                color: "var(--fg2)",
+                borderRadius: 6,
+                fontSize: 12,
+                fontFamily: "ui-monospace, monospace",
+              }}
+            />
+            <button
+              className="btn"
+              onClick={copyExportUrl}
+              disabled={!exportUrl}
+              style={{ minWidth: 90 }}
+            >
+              {copied ? "✓ Copiato" : "Copia"}
+            </button>
+            {exportUrl && (
+              <a
+                href={exportUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn"
+                style={{ textDecoration: "none" }}
+              >
+                Apri
+              </a>
+            )}
+          </div>
+
           <div className="lb">Import CSV WP All Import</div>
           <p className="muted" style={{ marginTop: 4, marginBottom: 14 }}>
             Upload di un CSV con le 37 colonne del template. Upsert su <code>wp_id</code>.

@@ -10,9 +10,9 @@
     "import:csv": "tsx scripts/import-csv.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.97.1",
     "@supabase/supabase-js": "^2.105.4",
     "next": "16.2.6",
+    "openai": "^4.87.4",
     "react": "19.2.4",
     "react-dom": "19.2.4"
   },
