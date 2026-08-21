@@ -1,6 +1,8 @@
-// Scrape leggero del sito ufficiale dell'agenzia.
-// Fetch HTML nativo → rimozione script/style/tag → testo pulito troncato.
-// Nessuna dipendenza esterna: se in futuro serve rendering JS si può passare a Firecrawl.
+// Scrape del sito ufficiale dell'agenzia.
+// Strategia a 2 livelli:
+//   1. fetch HTML nativo con UA browser (0 costo, veloce)
+//   2. fallback Firecrawl se native fallisce con bot-block/SPA/timeout
+//      (costa ma bypassa WAF/Cloudflare, esegue JS)
 
 const MAX_BYTES = 500_000; // 500KB HTML max — evita pagine enormi
 const MAX_TEXT_CHARS = 20_000; // ~5k token, sufficiente per estrarre info aziendali
@@ -78,10 +80,53 @@ export class ScrapeError extends Error {
   }
 }
 
-export async function scrapeWebsite(rawUrl: string): Promise<ScrapedSite> {
+// Reason ScrapeError su cui vale la pena tentare Firecrawl come fallback.
+// invalid_url e network_error (DNS/TLS) non hanno senso da riprovare.
+const FIRECRAWL_FALLBACK_REASONS = new Set([
+  "http_error",
+  "timeout",
+  "wrong_content_type",
+  "empty_response",
+  "too_little_text",
+]);
+
+export interface ScrapeResult extends ScrapedSite {
+  source: "native" | "firecrawl";
+}
+
+export async function scrapeWebsite(rawUrl: string): Promise<ScrapeResult> {
   const url = normalizeUrl(rawUrl);
   if (!url) throw new ScrapeError("invalid_url", `URL non valido: ${rawUrl}`);
 
+  try {
+    const native = await nativeScrape(url);
+    return { ...native, source: "native" };
+  } catch (err) {
+    if (!(err instanceof ScrapeError) || !FIRECRAWL_FALLBACK_REASONS.has(err.reason)) {
+      throw err;
+    }
+    // Import dinamico per evitare ciclo (firecrawl-scrape importa ScrapeError da qui)
+    const { firecrawlScrape, hasFirecrawl } = await import("./firecrawl-scrape");
+    if (!hasFirecrawl()) {
+      throw new ScrapeError(
+        err.reason,
+        `${err.message} — Firecrawl non configurato per fallback`,
+      );
+    }
+    try {
+      const fc = await firecrawlScrape(url);
+      return { ...fc, source: "firecrawl" };
+    } catch (fcErr) {
+      const fcMsg = fcErr instanceof Error ? fcErr.message : String(fcErr);
+      throw new ScrapeError(
+        "firecrawl_fallback_failed",
+        `Native: ${err.message} | Firecrawl: ${fcMsg}`,
+      );
+    }
+  }
+}
+
+async function nativeScrape(url: string): Promise<ScrapedSite> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 

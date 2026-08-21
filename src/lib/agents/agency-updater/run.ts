@@ -1,6 +1,6 @@
 import type { AgentContext, AgentResult } from "../framework";
 import { findPlace, type PlacesResult } from "./sources/google-places";
-import { scrapeWebsite, type ScrapedSite } from "./sources/website-scrape";
+import { scrapeWebsite, type ScrapeResult } from "./sources/website-scrape";
 import { extractFromWebsite, type LlmExtraction } from "./sources/llm-extract";
 import { resolveItalianAddress } from "./sources/geo-resolver";
 
@@ -162,13 +162,14 @@ export async function runAgencyUpdater(ctx: AgentContext): Promise<AgentResult> 
   let placesHits = 0;
   let placesMisses = 0;
   let scrapeHits = 0;
+  let firecrawlHits = 0;
   let llmHits = 0;
 
   for (const agency of agencies) {
     const itemStart = Date.now();
     let placesData: PlacesResult | null = null;
     let placesStatus: number | "error" = 0;
-    let scrapeData: ScrapedSite | null = null;
+    let scrapeData: ScrapeResult | null = null;
     let scrapeStatus: number | "error" | "skip" = "skip";
     let llmData: LlmExtraction | null = null;
     let llmStatus: number | "error" | "skip" = "skip";
@@ -194,6 +195,7 @@ export async function runAgencyUpdater(ctx: AgentContext): Promise<AgentResult> 
         scrapeData = await scrapeWebsite(targetSite);
         scrapeStatus = 200;
         scrapeHits++;
+        if (scrapeData.source === "firecrawl") firecrawlHits++;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         itemErrors.website_scrape = msg;
@@ -348,6 +350,7 @@ export async function runAgencyUpdater(ctx: AgentContext): Promise<AgentResult> 
     placesHits,
     placesMisses,
     scrapeHits,
+    firecrawlHits,
     llmHits,
   });
 
@@ -356,6 +359,13 @@ export async function runAgencyUpdater(ctx: AgentContext): Promise<AgentResult> 
     rowsProcessed: agencies.length,
     rowsSuccess: success,
     rowsError: errorCount,
-    meta: { placesHits, placesMisses, scrapeHits, llmHits, batchSize: BATCH_SIZE },
+    meta: {
+      placesHits,
+      placesMisses,
+      scrapeHits,
+      firecrawlHits,
+      llmHits,
+      batchSize: BATCH_SIZE,
+    },
   };
 }
