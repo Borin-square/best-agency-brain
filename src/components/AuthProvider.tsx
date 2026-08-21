@@ -15,7 +15,7 @@ import type { Session, UserProfile } from "@/lib/auth";
 interface AuthCtx {
   session: Session | null;
   loading: boolean;
-  loginWithMagicLink: (email: string) => Promise<string | null>;
+  login: (email: string, password: string) => Promise<string | null>;
   logout: () => void;
   refresh: () => Promise<void>;
 }
@@ -23,7 +23,7 @@ interface AuthCtx {
 const AuthContext = createContext<AuthCtx>({
   session: null,
   loading: true,
-  loginWithMagicLink: async () => null,
+  login: async () => null,
   logout: () => {},
   refresh: async () => {},
 });
@@ -99,20 +99,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const loginWithMagicLink = useCallback(
-    async (email: string): Promise<string | null> => {
+  const login = useCallback(
+    async (email: string, password: string): Promise<string | null> => {
       if (!supabaseReady) return "Supabase non configurato";
       try {
-        const { error } = await supabase.auth.signInWithOtp({
-          email,
-          options: {
-            emailRedirectTo:
-              typeof window !== "undefined"
-                ? `${window.location.origin}/api/auth/callback`
-                : undefined,
-          },
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: email.trim().toLowerCase(),
+          password,
         });
         if (error) return error.message;
+        if (data.user) {
+          const profile = await loadProfile(data.user.id);
+          if (!profile) return "Profilo non trovato. Contatta l'amministratore.";
+          setSession(profile);
+        }
         return null;
       } catch (e) {
         return (e as Error).message || "Errore di connessione";
@@ -141,9 +141,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider
-      value={{ session, loading, loginWithMagicLink, logout, refresh }}
-    >
+    <AuthContext.Provider value={{ session, loading, login, logout, refresh }}>
       {children}
     </AuthContext.Provider>
   );
