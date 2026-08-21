@@ -44,9 +44,14 @@ async function loadProfile(userId: string): Promise<Session | null> {
       .select("*")
       .eq("id", userId)
       .single();
-    if (error || !data) return null;
+    if (error) {
+      console.error("[loadProfile] Supabase error:", error);
+      return null;
+    }
+    if (!data) return null;
     return toSession(data as UserProfile);
-  } catch {
+  } catch (e) {
+    console.error("[loadProfile] Exception:", e);
     return null;
   }
 }
