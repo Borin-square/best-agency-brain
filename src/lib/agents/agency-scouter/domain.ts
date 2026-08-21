@@ -42,32 +42,60 @@ export function normalizeAgencyName(name: string): string {
     .trim();
 }
 
-// Domini da SEMPRE escludere come "sito ufficiale" (social, directory, aggregatori).
-const NON_OFFICIAL_HOSTS = new Set([
-  "linkedin.com",
-  "instagram.com",
-  "facebook.com",
-  "twitter.com",
-  "x.com",
-  "youtube.com",
-  "tiktok.com",
-  "behance.net",
-  "dribbble.com",
-  "vimeo.com",
-  "medium.com",
-  "wordpress.com",
-  "wixsite.com",
-  "clutch.co",
-  "sortlist.com",
-  "goodfirms.co",
-  "designrush.com",
-  "agenziecomunicazione.it",
-  "miglioreagenzia.it",
-  "google.com",
-  "wikipedia.org",
+// Nomi (senza TLD) di aggregatori/social/directory: matchiamo su qualsiasi TLD
+// così sortlist.com, sortlist.es, sortlist.it sono tutti bloccati.
+const NON_OFFICIAL_BASE_NAMES = new Set([
+  "linkedin",
+  "instagram",
+  "facebook",
+  "twitter",
+  "x", // x.com
+  "youtube",
+  "tiktok",
+  "behance",
+  "dribbble",
+  "vimeo",
+  "medium",
+  "clutch",
+  "sortlist",
+  "goodfirms",
+  "designrush",
+  "agenciasdemarketing",
+  "agenziecomunicazione",
+  "miglioreagenzia",
+  "mejoragencia",
+  "meilleureagence",
+  "besteragentur",
+  "google",
+  "wikipedia",
+  "yelp",
+  "trustpilot",
+  "glassdoor",
+  "indeed",
+  "crunchbase",
+  "yellowpages",
+  "paginegialle",
+  "manta",
 ]);
+
+// Sottodomini hostati (mai domini ufficiali di agenzie).
+const HOSTED_SUFFIXES = [
+  ".wordpress.com",
+  ".wixsite.com",
+  ".webflow.io",
+  ".vercel.app",
+  ".netlify.app",
+  ".github.io",
+  ".blogspot.com",
+  ".squarespace.com",
+];
 
 export function isDirectoryOrSocialDomain(domain: string | null): boolean {
   if (!domain) return true;
-  return NON_OFFICIAL_HOSTS.has(domain) || domain.endsWith(".wordpress.com") || domain.endsWith(".wixsite.com");
+  const d = domain.toLowerCase();
+  for (const suf of HOSTED_SUFFIXES) if (d.endsWith(suf)) return true;
+  // Prendi il primo label (nome brand): "sortlist.es" → "sortlist"
+  const baseName = d.split(".")[0];
+  if (NON_OFFICIAL_BASE_NAMES.has(baseName)) return true;
+  return false;
 }

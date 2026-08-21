@@ -17,11 +17,13 @@ export interface AgencyClassification {
     | "association"
     | "inactive"
     | "not_agency"
+    | "out_of_geo"
     | "other";
-  primary_services: string[]; // slug del catalogo scope (branding, seo, meta_ads, ...)
+  primary_services: string[];
   location: { city: string | null; country: string | null };
+  matches_geo_scope: boolean | null; // null se scope non specificato
   confidence: "high" | "medium" | "low";
-  official_name: string | null; // nome ufficiale come appare sul sito
+  official_name: string | null;
 }
 
 const SCHEMA = {
@@ -46,6 +48,7 @@ const SCHEMA = {
           "association",
           "inactive",
           "not_agency",
+          "out_of_geo",
           "other",
         ],
       },
@@ -59,6 +62,11 @@ const SCHEMA = {
         },
         required: ["city", "country"],
       },
+      matches_geo_scope: {
+        type: ["boolean", "null"],
+        description:
+          "true = sede chiaramente nel perimetro geografico richiesto. false = fuori scope. null solo se scope non richiesto.",
+      },
       confidence: { type: "string", enum: ["high", "medium", "low"] },
       official_name: { type: ["string", "null"] },
     },
@@ -68,6 +76,7 @@ const SCHEMA = {
       "exclusion_reason",
       "primary_services",
       "location",
+      "matches_geo_scope",
       "confidence",
       "official_name",
     ],
@@ -83,23 +92,33 @@ const EXCLUSIONS = `freelance, software house pure senza servizi marketing, SaaS
 export async function classifyAgencyHomepage(
   page: ScrapeResult,
   candidateName: string,
+  geoScope: string | null,
 ): Promise<AgencyClassification | null> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return null;
   const client = new OpenAI({ apiKey });
 
-  const prompt = `Analizza la homepage per capire se questo è un candidato valido per il database di miglioreagenzia.it.
+  const geoRules = geoScope
+    ? `\nSCOPE GEOGRAFICO OBBLIGATORIO: "${geoScope}"
+- matches_geo_scope = true SOLO se la sede/l'indirizzo sono verificabilmente nel perimetro sopra (città, regione o paese esplicito nel sito).
+- Se il sito non mostra indirizzo/città/paese o mostra sede fuori dal perimetro, matches_geo_scope = false.
+- Non basarti su lingua del sito o TLD per confermare la sede. Serve un indizio testuale esplicito.
+- exclusion_reason = "out_of_geo" se matches_geo_scope = false.`
+    : `\nSCOPE GEOGRAFICO: nessuno. Imposta matches_geo_scope = null.`;
+
+  const prompt = `Analizza la homepage per capire se questo è un candidato valido per il database di miglioreagenzia.
 
 IN-SCOPE: ${SCOPE}
 ESCLUDERE: ${EXCLUSIONS}
+${geoRules}
 
 Regole:
 - is_agency = si presenta come agenzia/studio organizzato con team (non un singolo freelance con portfolio)
 - in_scope = offre almeno un servizio del catalogo IN-SCOPE
-- exclusion_reason = se in_scope=false o is_agency=false, indica il motivo principale
 - primary_services = lista lowercase di aree di competenza chiare (es. 'seo', 'branding', 'meta ads')
-- location = città/paese solo se chiaramente indicati
+- location = città/paese solo se chiaramente indicati sul sito
 - official_name = nome mostrato in header/logo (senza forma societaria)
+- exclusion_reason = motivo principale se non pertinente
 
 Candidato originale: "${candidateName}"
 URL analizzato: ${page.final_url}

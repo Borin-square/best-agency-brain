@@ -296,7 +296,7 @@ export async function runAgencyScouter(ctx: AgentContext): Promise<AgentResult> 
       continue;
     }
 
-    const classification = await classifyAgencyHomepage(scraped, cand.name);
+    const classification = await classifyAgencyHomepage(scraped, cand.name, geo || null);
     if (!classification) {
       outcome.notes = "Classificazione LLM fallita";
       rejected++;
@@ -312,6 +312,26 @@ export async function runAgencyScouter(ctx: AgentContext): Promise<AgentResult> 
       rejected++;
       outcomes.push(outcome);
       continue;
+    }
+
+    // Enforcement geo scope: se richiesto, sede DEVE essere verificabile e nel perimetro.
+    if (geo) {
+      if (classification.matches_geo_scope !== true) {
+        outcome.status = "REJECTED";
+        outcome.notes = `Fuori scope geografico "${geo}" (sede: ${
+          classification.location.city ?? "?"
+        }, ${classification.location.country ?? "?"})`;
+        rejected++;
+        outcomes.push(outcome);
+        continue;
+      }
+      if (!classification.location.country && !classification.location.city) {
+        outcome.status = "REJECTED";
+        outcome.notes = `Nessun indirizzo verificabile nel sito — scope "${geo}" richiede sede esplicita`;
+        rejected++;
+        outcomes.push(outcome);
+        continue;
+      }
     }
 
     if (classification.confidence === "low") {
