@@ -34,11 +34,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "missing_file" }, { status: 400 });
   }
 
+  const domainId = String(formData.get("domain_id") ?? "").trim();
+  if (!domainId) {
+    return NextResponse.json({ error: "missing_domain_id" }, { status: 400 });
+  }
+
   const raw = await file.text();
   const rows = parseCsv(raw);
   const mapped = rows
     .map(mapAgencyRow)
-    .filter((r): r is Record<string, unknown> => r !== null);
+    .filter((r): r is Record<string, unknown> => r !== null)
+    .map((r) => ({ ...r, domain_id: domainId }));
 
   if (mapped.length === 0) {
     // Debug diagnostica: torna preview per capire cosa non funziona
@@ -70,7 +76,11 @@ export async function POST(req: NextRequest) {
     const chunk = mapped.slice(i, i + CHUNK);
     const { error, count } = await supabase
       .from("agencies")
-      .upsert(chunk, { onConflict: "wp_id", ignoreDuplicates: false, count: "exact" });
+      .upsert(chunk, {
+        onConflict: "domain_id,wp_id",
+        ignoreDuplicates: false,
+        count: "exact",
+      });
 
     if (error) {
       errorCount += chunk.length;

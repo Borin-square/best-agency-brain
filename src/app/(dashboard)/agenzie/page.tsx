@@ -1,8 +1,15 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { useDomain } from "@/components/DomainProvider";
+
+interface AgentMeta {
+  id: string;
+  name: string;
+  description: string;
+  enabled: boolean;
+}
 
 interface Stats {
   total: number;
@@ -44,6 +51,8 @@ interface ListResponse {
 }
 
 export default function AgenziePage() {
+  const { currentDomainId, currentDomain } = useDomain();
+
   const [stats, setStats] = useState<Stats | null>(null);
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
@@ -57,18 +66,26 @@ export default function AgenziePage() {
   const [exportUrl, setExportUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [agents, setAgents] = useState<AgentMeta[]>([]);
+  const [runAgentId, setRunAgentId] = useState<string>("");
+  const [running, setRunning] = useState(false);
+  const [runMsg, setRunMsg] = useState<string | null>(null);
+
   const loadStats = useCallback(async () => {
-    const res = await fetch("/api/agencies/stats");
+    if (!currentDomainId) return;
+    const res = await fetch(`/api/agencies/stats?domain_id=${currentDomainId}`);
     if (res.ok) setStats(await res.json());
-  }, []);
+  }, [currentDomainId]);
 
   const loadList = useCallback(async () => {
-    const params = new URLSearchParams({ page: String(page) });
+    if (!currentDomainId) return;
+    const params = new URLSearchParams({ page: String(page), domain_id: currentDomainId });
     if (q.trim()) params.set("q", q.trim());
     if (enriched) params.set("enriched", enriched);
     const res = await fetch(`/api/agencies?${params}`);
     if (res.ok) setList(await res.json());
-  }, [page, q, enriched]);
+  }, [page, q, enriched, currentDomainId]);
 
   useEffect(() => {
     loadStats();
@@ -76,26 +93,95 @@ export default function AgenziePage() {
 
   useEffect(() => {
     loadList();
+    setSelected(new Set()); // reset selezione al cambio dominio/filtro/pagina
   }, [loadList]);
 
+  useEffect(() => {
+    fetch("/api/agents")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => d && setAgents(d.agents))
+      .catch(() => {});
+  }, []);
+
   const loadExportUrl = useCallback(async () => {
+    if (!currentDomainId) return;
     const {
       data: { session },
     } = await supabase.auth.getSession();
     const token = session?.access_token;
     if (!token) return;
-    const res = await fetch("/api/agencies/export-url", {
+    const res = await fetch(`/api/agencies/export-url?domain_id=${currentDomainId}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (res.ok) {
       const data = (await res.json()) as { url: string };
       setExportUrl(data.url);
     }
-  }, []);
+  }, [currentDomainId]);
+
+  useEffect(() => {
+    setExportUrl(null); // ricomputa al cambio dominio
+  }, [currentDomainId]);
 
   useEffect(() => {
     if (showUpload && !exportUrl) loadExportUrl();
   }, [showUpload, exportUrl, loadExportUrl]);
+
+  function toggleSelect(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    if (!list) return;
+    const allIds = list.rows.map((r) => r.id);
+    const allSelected = allIds.every((id) => selected.has(id));
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allSelected) allIds.forEach((id) => next.delete(id));
+      else allIds.forEach((id) => next.add(id));
+      return next;
+    });
+  }
+
+  async function runOnSelected() {
+    if (!runAgentId || selected.size === 0) return;
+    setRunning(true);
+    setRunMsg(null);
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) throw new Error("Sessione non valida");
+      const res = await fetch(`/api/agents/${runAgentId}/run`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          domain_id: currentDomainId,
+          agency_ids: Array.from(selected),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      setRunMsg(
+        `✓ Completato: ${data.rowsSuccess}/${data.rowsProcessed} ok · ${data.rowsError} errori`,
+      );
+      setSelected(new Set());
+      await loadList();
+    } catch (e) {
+      setRunMsg(`✗ ${(e as Error).message}`);
+    } finally {
+      setRunning(false);
+    }
+  }
 
   async function copyExportUrl() {
     if (!exportUrl) return;
@@ -107,6 +193,10 @@ export default function AgenziePage() {
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!currentDomainId) {
+      setResult({ ok: false, error: "Seleziona prima un dominio dal Topbar" });
+      return;
+    }
     setUploading(true);
     setResult(null);
     try {
@@ -117,6 +207,7 @@ export default function AgenziePage() {
       if (!token) throw new Error("Sessione non valida");
       const formData = new FormData();
       formData.append("file", file);
+      formData.append("domain_id", currentDomainId);
       const res = await fetch("/api/agencies/import", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
@@ -141,7 +232,9 @@ export default function AgenziePage() {
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 20 }}>
         <div>
           <h1>Agenzie</h1>
-          <p className="muted">Directory miglioreagenzia.it — {stats?.total ?? "…"} record totali.</p>
+          <p className="muted">
+            {currentDomain?.domain ?? "…"} — {stats?.total ?? "…"} record.
+          </p>
         </div>
         <button className="btn" onClick={() => setShowUpload((s) => !s)}>
           {showUpload ? "Chiudi" : "Import / Export CSV"}
@@ -313,15 +406,86 @@ export default function AgenziePage() {
         {list && (
           <span className="muted" style={{ marginLeft: "auto", fontSize: 12 }}>
             {list.total} risultati · pag {list.page}/{list.pages || 1}
+            {selected.size > 0 && <> · <b>{selected.size} selezionate</b></>}
           </span>
         )}
       </div>
+
+      {/* Action bar selezione */}
+      {selected.size > 0 && (
+        <div
+          className="cd"
+          style={{
+            marginTop: 12,
+            padding: 12,
+            display: "flex",
+            gap: 10,
+            alignItems: "center",
+            flexWrap: "wrap",
+          }}
+        >
+          <span style={{ fontSize: 13, fontWeight: 500 }}>
+            {selected.size} selezionate · Esegui agent:
+          </span>
+          <select
+            value={runAgentId}
+            onChange={(e) => setRunAgentId(e.target.value)}
+            style={{
+              padding: "6px 10px",
+              background: "var(--bg3)",
+              border: "1px solid var(--bd)",
+              color: "var(--fg)",
+              borderRadius: 6,
+              fontSize: 12,
+              fontFamily: "inherit",
+            }}
+          >
+            <option value="">— scegli agent —</option>
+            {agents.filter((a) => a.enabled).map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </select>
+          <button
+            className="btn btn-primary"
+            onClick={runOnSelected}
+            disabled={!runAgentId || running}
+          >
+            {running ? "Esecuzione…" : "Esegui ora"}
+          </button>
+          <button className="btn" onClick={() => setSelected(new Set())} disabled={running}>
+            Annulla selezione
+          </button>
+          {runMsg && (
+            <span
+              style={{
+                marginLeft: "auto",
+                fontSize: 12,
+                color: runMsg.startsWith("✓") ? "var(--grn)" : "var(--red)",
+              }}
+            >
+              {runMsg}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Tabella */}
       <div className="cd" style={{ marginTop: 12, padding: 0 }}>
         <table className="tbl">
           <thead>
             <tr>
+              <th style={{ width: 32 }}>
+                <input
+                  type="checkbox"
+                  checked={
+                    !!list && list.rows.length > 0 && list.rows.every((r) => selected.has(r.id))
+                  }
+                  onChange={toggleSelectAll}
+                  style={{ cursor: "pointer" }}
+                />
+              </th>
               <th>Agenzia</th>
               <th>Città</th>
               <th>Verifica</th>
@@ -333,13 +497,13 @@ export default function AgenziePage() {
           <tbody>
             {!list ? (
               <tr>
-                <td colSpan={6} style={{ padding: 20, color: "var(--fg3)" }}>
+                <td colSpan={7} style={{ padding: 20, color: "var(--fg3)" }}>
                   Caricamento…
                 </td>
               </tr>
             ) : list.rows.length === 0 ? (
               <tr>
-                <td colSpan={6} style={{ padding: 20, color: "var(--fg3)" }}>
+                <td colSpan={7} style={{ padding: 20, color: "var(--fg3)" }}>
                   Nessuna agenzia.
                 </td>
               </tr>
@@ -347,9 +511,25 @@ export default function AgenziePage() {
               list.rows.map((a) => (
                 <tr
                   key={a.id}
-                  onClick={() => (window.location.href = `/agenzie/${a.id}`)}
-                  style={{ cursor: "pointer" }}
+                  onClick={(e) => {
+                    // Non naviga se click è sulla checkbox
+                    const target = e.target as HTMLElement;
+                    if (target.tagName === "INPUT" || target.closest("input")) return;
+                    window.location.href = `/agenzie/${a.id}`;
+                  }}
+                  style={{
+                    cursor: "pointer",
+                    background: selected.has(a.id) ? "rgba(59,130,246,.06)" : undefined,
+                  }}
                 >
+                  <td onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={selected.has(a.id)}
+                      onChange={() => toggleSelect(a.id)}
+                      style={{ cursor: "pointer" }}
+                    />
+                  </td>
                   <td>
                     <div style={{ fontWeight: 500 }}>{a.title}</div>
                     {a.wp_id && (

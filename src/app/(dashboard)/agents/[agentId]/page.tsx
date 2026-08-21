@@ -3,6 +3,7 @@
 import { use, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import { useDomain } from "@/components/DomainProvider";
 
 interface Run {
   id: string;
@@ -14,6 +15,8 @@ interface Run {
   rows_success: number;
   rows_error: number;
   duration_ms: number | null;
+  domain_id: string | null;
+  network_domains?: { domain: string; country_code: string } | null;
 }
 
 interface AgentDetail {
@@ -31,10 +34,12 @@ export default function AgentDetailPage({
   params: Promise<{ agentId: string }>;
 }) {
   const { agentId } = use(params);
+  const { currentDomainId, currentDomain } = useDomain();
   const [detail, setDetail] = useState<AgentDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [runGlobal, setRunGlobal] = useState(false);
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/agents/${agentId}`);
@@ -57,7 +62,13 @@ export default function AgentDetailPage({
       if (!token) throw new Error("Sessione non valida");
       const res = await fetch(`/api/agents/${agentId}/run`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(
+          runGlobal || !currentDomainId ? {} : { domain_id: currentDomainId },
+        ),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Errore");
@@ -97,8 +108,20 @@ export default function AgentDetailPage({
         <div className="cd">
           <div className="lb">Trigger manuale</div>
           <button className="btn btn-primary" onClick={triggerRun} disabled={running}>
-            {running ? "Esecuzione…" : "Esegui ora"}
+            {running
+              ? "Esecuzione…"
+              : runGlobal
+                ? "Esegui globale"
+                : `Esegui su ${currentDomain?.domain ?? "…"}`}
           </button>
+          <label style={{ display: "flex", gap: 6, marginTop: 8, fontSize: 11 }}>
+            <input
+              type="checkbox"
+              checked={runGlobal}
+              onChange={(e) => setRunGlobal(e.target.checked)}
+            />
+            <span className="muted">Globale (tutti i domini attivi)</span>
+          </label>
           {msg && (
             <p className="muted" style={{ marginTop: 8, fontSize: 12 }}>
               {msg}
@@ -113,6 +136,7 @@ export default function AgentDetailPage({
           <thead>
             <tr>
               <th>Started</th>
+              <th>Dominio</th>
               <th>Trigger</th>
               <th>Status</th>
               <th>Rows</th>
@@ -122,7 +146,7 @@ export default function AgentDetailPage({
           <tbody>
             {detail.runs.length === 0 ? (
               <tr>
-                <td colSpan={5} style={{ padding: 20, color: "var(--fg3)" }}>
+                <td colSpan={6} style={{ padding: 20, color: "var(--fg3)" }}>
                   Nessuna esecuzione.
                 </td>
               </tr>
@@ -134,6 +158,18 @@ export default function AgentDetailPage({
                   style={{ cursor: "pointer" }}
                 >
                   <td>{new Date(r.started_at).toLocaleString("it-IT")}</td>
+                  <td style={{ fontSize: 12 }}>
+                    {r.network_domains ? (
+                      <>
+                        <span style={{ marginRight: 4 }}>
+                          {r.network_domains.country_code}
+                        </span>
+                        <span className="muted">{r.network_domains.domain}</span>
+                      </>
+                    ) : (
+                      <span className="muted">globale</span>
+                    )}
+                  </td>
                   <td>
                     <code style={{ fontSize: 11 }}>{r.triggered_by}</code>
                   </td>

@@ -1,10 +1,20 @@
 import { createServiceClient } from "@/lib/supabase-server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+// Filtri opzionali che restringono il set di record su cui l'agent opera.
+// Se agencyIds è presente ha priorità su tutto. Altrimenti domainId limita a
+// un tenant; senza né l'uno né l'altro l'agent lavora "globale" (attualmente
+// solo domini attivi in agency-updater).
+export interface AgentRunFilters {
+  domainId?: string;
+  agencyIds?: string[];
+}
+
 export interface AgentContext {
   runId: string;
   supabase: SupabaseClient;
   triggeredBy: "cron" | "manual" | `user:${string}`;
+  filters: AgentRunFilters;
   log: (msg: string, meta?: Record<string, unknown>) => void;
 }
 
@@ -17,23 +27,24 @@ export interface AgentResult {
 }
 
 export interface Agent {
-  id: string;                 // stable slug, es 'agency-updater'
-  name: string;               // human-readable
+  id: string;
+  name: string;
   description: string;
-  schedule: string;           // cron expression, es '0 3 * * *'
+  schedule: string;
   enabled: boolean;
   run: (ctx: AgentContext) => Promise<AgentResult>;
 }
 
 interface RunOptions {
   triggeredBy: AgentContext["triggeredBy"];
+  filters?: AgentRunFilters;
 }
 
-// Esegue un agente creando riga in agent_runs, gestisce success/error, chiude riga.
 export async function runAgent(agent: Agent, opts: RunOptions): Promise<AgentResult> {
   const supabase = createServiceClient();
   const startedAt = new Date();
   const logs: Array<{ ts: string; msg: string; meta?: Record<string, unknown> }> = [];
+  const filters: AgentRunFilters = opts.filters ?? {};
 
   const { data: runRow, error: insertErr } = await supabase
     .from("agent_runs")
@@ -42,6 +53,13 @@ export async function runAgent(agent: Agent, opts: RunOptions): Promise<AgentRes
       started_at: startedAt.toISOString(),
       status: "running",
       triggered_by: opts.triggeredBy,
+      domain_id: filters.domainId ?? null,
+      meta: {
+        filters: {
+          domainId: filters.domainId ?? null,
+          agencyIds: filters.agencyIds ?? null,
+        },
+      },
     })
     .select()
     .single();
@@ -54,6 +72,7 @@ export async function runAgent(agent: Agent, opts: RunOptions): Promise<AgentRes
     runId: runRow.id as string,
     supabase,
     triggeredBy: opts.triggeredBy,
+    filters,
     log: (msg, meta) => {
       logs.push({ ts: new Date().toISOString(), msg, meta });
       console.log(`[${agent.id}] ${msg}`, meta ?? "");
@@ -80,7 +99,13 @@ export async function runAgent(agent: Agent, opts: RunOptions): Promise<AgentRes
       rows_error: result.rowsError,
       duration_ms: completedAt.getTime() - startedAt.getTime(),
       log: { entries: logs },
-      meta: result.meta ?? null,
+      meta: {
+        filters: {
+          domainId: filters.domainId ?? null,
+          agencyIds: filters.agencyIds ?? null,
+        },
+        ...(result.meta ?? {}),
+      },
     })
     .eq("id", runRow.id);
 

@@ -104,18 +104,21 @@ export async function GET(req: Request) {
     }
   }
 
+  const domainId = url.searchParams.get("domain_id")?.trim();
+
   const supabase = createServiceClient();
   // Paginazione: Supabase limita a 1000/query
   const PAGE = 1000;
   const all: Record<string, unknown>[] = [];
   let from = 0;
   while (true) {
-    const { data, error } = await supabase
+    let q = supabase
       .from("agencies")
       .select("*")
       .in("publish_status", ["publish", "draft"])
-      .order("wp_id", { ascending: true, nullsFirst: false })
-      .range(from, from + PAGE - 1);
+      .order("wp_id", { ascending: true, nullsFirst: false });
+    if (domainId) q = q.eq("domain_id", domainId);
+    const { data, error } = await q.range(from, from + PAGE - 1);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     if (!data || data.length === 0) break;
     all.push(...data);

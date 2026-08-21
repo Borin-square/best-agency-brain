@@ -19,6 +19,7 @@ export async function GET(req: NextRequest) {
   const verifica = url.searchParams.get("verifica")?.trim();
   const statusCuratela = url.searchParams.get("status_curatela")?.trim();
   const enriched = url.searchParams.get("enriched");
+  const domainId = url.searchParams.get("domain_id")?.trim();
 
   const supabase = createServiceClient();
 
@@ -30,6 +31,7 @@ export async function GET(req: NextRequest) {
     )
     .order("wp_id", { ascending: true, nullsFirst: false });
 
+  if (domainId) query = query.eq("domain_id", domainId);
   if (q) query = query.ilike("title", `%${q}%`);
   if (citta) query = query.eq("citta", citta);
   if (verifica) query = query.eq("verifica", verifica);

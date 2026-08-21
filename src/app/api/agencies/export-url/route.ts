@@ -23,10 +23,15 @@ export async function GET(req: NextRequest) {
   }
 
   const token = process.env.EXPORT_TOKEN ?? null;
-  const origin = new URL(req.url).origin;
-  const url = token
-    ? `${origin}/api/export/agencies.csv?token=${token}`
-    : `${origin}/api/export/agencies.csv`;
+  const reqUrl = new URL(req.url);
+  const origin = reqUrl.origin;
+  const domainId = reqUrl.searchParams.get("domain_id")?.trim();
+
+  const params = new URLSearchParams();
+  if (token) params.set("token", token);
+  if (domainId) params.set("domain_id", domainId);
+  const qs = params.toString();
+  const url = `${origin}/api/export/agencies.csv${qs ? `?${qs}` : ""}`;
 
   return NextResponse.json({ url, token_required: Boolean(token) });
 }

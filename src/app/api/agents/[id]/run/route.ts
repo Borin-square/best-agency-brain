@@ -1,13 +1,16 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServiceClient } from "@/lib/supabase-server";
 import { getAgent } from "@/lib/agents/registry";
-import { runAgent } from "@/lib/agents/framework";
+import { runAgent, type AgentRunFilters } from "@/lib/agents/framework";
 
 export const runtime = "nodejs";
-export const maxDuration = 300; // Hobby plan max — se il batch di 30 non basta, ridurre BATCH_SIZE in run.ts
+export const maxDuration = 300;
 
-// Trigger manuale da dashboard.
-// Autenticato via Supabase JWT (Bearer token dall'utente loggato).
+// Trigger manuale.
+// Body opzionale: { domain_id?: string, agency_ids?: string[] }
+//   - agency_ids ha priorità (esegue solo su quelle)
+//   - domain_id limita al dominio
+//   - vuoto → globale (solo domini attivi, come cron)
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const authHeader = req.headers.get("authorization");
   const jwt = authHeader?.replace(/^Bearer\s+/, "");
@@ -19,7 +22,6 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     return NextResponse.json({ error: "invalid_token" }, { status: 401 });
   }
 
-  // Verifica ruolo owner/dev
   const { data: profile } = await supabase
     .from("profiles")
     .select("role")
@@ -33,6 +35,20 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const agent = getAgent(id);
   if (!agent) return NextResponse.json({ error: "agent_not_found" }, { status: 404 });
 
-  const result = await runAgent(agent, { triggeredBy: `user:${userData.user.id}` });
+  const body = (await req.json().catch(() => null)) as {
+    domain_id?: string;
+    agency_ids?: string[];
+  } | null;
+
+  const filters: AgentRunFilters = {};
+  if (body?.domain_id) filters.domainId = body.domain_id;
+  if (Array.isArray(body?.agency_ids) && body!.agency_ids!.length > 0) {
+    filters.agencyIds = body!.agency_ids!;
+  }
+
+  const result = await runAgent(agent, {
+    triggeredBy: `user:${userData.user.id}`,
+    filters,
+  });
   return NextResponse.json({ ok: true, ...result });
 }
