@@ -18,6 +18,12 @@ interface ImportResult {
   errors?: number;
   error?: string;
   error_details?: string[];
+  debug?: {
+    file_size: number;
+    first_100_chars: string;
+    headers_detected: string[];
+    first_row_sample: Record<string, string> | null;
+  };
 }
 
 export default function AgenziePage() {
@@ -155,6 +161,21 @@ export default function AgenziePage() {
                       </li>
                     ))}
                   </ul>
+                )}
+                {result.debug && (
+                  <pre
+                    style={{
+                      marginTop: 10,
+                      padding: 10,
+                      background: "var(--bg3)",
+                      borderRadius: 4,
+                      fontSize: 11,
+                      overflow: "auto",
+                      maxHeight: 300,
+                    }}
+                  >
+                    {JSON.stringify(result.debug, null, 2)}
+                  </pre>
                 )}
               </>
             )}

@@ -41,9 +41,23 @@ export async function POST(req: NextRequest) {
     .filter((r): r is Record<string, unknown> => r !== null);
 
   if (mapped.length === 0) {
+    // Debug diagnostica: torna preview per capire cosa non funziona
+    const firstRow = rows[0];
     return NextResponse.json({
       error: "no_valid_rows",
       parsed: rows.length,
+      debug: {
+        file_size: raw.length,
+        first_100_chars: raw.slice(0, 100),
+        headers_detected: firstRow ? Object.keys(firstRow) : [],
+        first_row_sample: firstRow
+          ? {
+              Title: firstRow["Title"] ?? "(missing key)",
+              ID: firstRow["ID"] ?? "(missing key)",
+              Citta: firstRow["Città"] ?? "(missing key)",
+            }
+          : null,
+      },
     }, { status: 400 });
   }
 
