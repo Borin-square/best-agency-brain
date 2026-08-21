@@ -4,6 +4,9 @@ import { use, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useDomain } from "@/components/DomainProvider";
+import ScouterForm from "@/components/ScouterForm";
+
+const SCOUTER_ID = "agency-scouter";
 
 interface Run {
   id: string;
@@ -86,6 +89,8 @@ export default function AgentDetailPage({
   if (loading) return <p className="muted">Caricamento…</p>;
   if (!detail) return <p className="muted">Agente non trovato.</p>;
 
+  const isScouter = agentId === SCOUTER_ID;
+
   return (
     <div>
       <Link href="/agents" className="muted" style={{ fontSize: 12 }}>
@@ -97,7 +102,7 @@ export default function AgentDetailPage({
       <div className="grid-3" style={{ marginTop: 20 }}>
         <div className="cd">
           <div className="lb">Schedule</div>
-          <code style={{ fontSize: 14 }}>{detail.schedule}</code>
+          <code style={{ fontSize: 14 }}>{detail.schedule || "—"}</code>
         </div>
         <div className="cd">
           <div className="lb">Stato</div>
@@ -105,30 +110,41 @@ export default function AgentDetailPage({
             {detail.enabled ? "ATTIVO" : "OFF"}
           </span>
         </div>
-        <div className="cd">
-          <div className="lb">Trigger manuale</div>
-          <button className="btn btn-primary" onClick={triggerRun} disabled={running}>
-            {running
-              ? "Esecuzione…"
-              : runGlobal
-                ? "Esegui globale"
-                : `Esegui su ${currentDomain?.domain ?? "…"}`}
-          </button>
-          <label style={{ display: "flex", gap: 6, marginTop: 8, fontSize: 11 }}>
-            <input
-              type="checkbox"
-              checked={runGlobal}
-              onChange={(e) => setRunGlobal(e.target.checked)}
-            />
-            <span className="muted">Globale (tutti i domini attivi)</span>
-          </label>
-          {msg && (
-            <p className="muted" style={{ marginTop: 8, fontSize: 12 }}>
-              {msg}
-            </p>
-          )}
-        </div>
+        {!isScouter && (
+          <div className="cd">
+            <div className="lb">Trigger manuale</div>
+            <button className="btn btn-primary" onClick={triggerRun} disabled={running}>
+              {running
+                ? "Esecuzione…"
+                : runGlobal
+                  ? "Esegui globale"
+                  : `Esegui su ${currentDomain?.domain ?? "…"}`}
+            </button>
+            <label style={{ display: "flex", gap: 6, marginTop: 8, fontSize: 11 }}>
+              <input
+                type="checkbox"
+                checked={runGlobal}
+                onChange={(e) => setRunGlobal(e.target.checked)}
+              />
+              <span className="muted">Globale (tutti i domini attivi)</span>
+            </label>
+            {msg && (
+              <p className="muted" style={{ marginTop: 8, fontSize: 12 }}>
+                {msg}
+              </p>
+            )}
+          </div>
+        )}
       </div>
+
+      {isScouter && (
+        <ScouterForm
+          agentId={agentId}
+          domainId={currentDomainId}
+          domainLabel={currentDomain?.domain ?? "—"}
+          onDone={load}
+        />
+      )}
 
       <h2 style={{ marginTop: 28 }}>Run history</h2>
       <div className="cd" style={{ padding: 0 }}>

@@ -15,6 +15,7 @@ export interface AgentContext {
   supabase: SupabaseClient;
   triggeredBy: "cron" | "manual" | `user:${string}`;
   filters: AgentRunFilters;
+  payload: Record<string, unknown>; // arbitrario, dipende dall'agent
   log: (msg: string, meta?: Record<string, unknown>) => void;
 }
 
@@ -38,6 +39,7 @@ export interface Agent {
 interface RunOptions {
   triggeredBy: AgentContext["triggeredBy"];
   filters?: AgentRunFilters;
+  payload?: Record<string, unknown>;
 }
 
 export async function runAgent(agent: Agent, opts: RunOptions): Promise<AgentResult> {
@@ -45,6 +47,7 @@ export async function runAgent(agent: Agent, opts: RunOptions): Promise<AgentRes
   const startedAt = new Date();
   const logs: Array<{ ts: string; msg: string; meta?: Record<string, unknown> }> = [];
   const filters: AgentRunFilters = opts.filters ?? {};
+  const payload: Record<string, unknown> = opts.payload ?? {};
 
   const { data: runRow, error: insertErr } = await supabase
     .from("agent_runs")
@@ -73,6 +76,7 @@ export async function runAgent(agent: Agent, opts: RunOptions): Promise<AgentRes
     supabase,
     triggeredBy: opts.triggeredBy,
     filters,
+    payload,
     log: (msg, meta) => {
       logs.push({ ts: new Date().toISOString(), msg, meta });
       console.log(`[${agent.id}] ${msg}`, meta ?? "");

@@ -38,6 +38,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const body = (await req.json().catch(() => null)) as {
     domain_id?: string;
     agency_ids?: string[];
+    payload?: Record<string, unknown>;
   } | null;
 
   const filters: AgentRunFilters = {};
@@ -49,6 +50,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const result = await runAgent(agent, {
     triggeredBy: `user:${userData.user.id}`,
     filters,
+    payload: body?.payload ?? {},
   });
   return NextResponse.json({ ok: true, ...result });
 }
