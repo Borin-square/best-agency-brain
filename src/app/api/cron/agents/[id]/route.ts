@@ -3,7 +3,7 @@ import { getAgent } from "@/lib/agents/registry";
 import { runAgent } from "@/lib/agents/framework";
 
 export const runtime = "nodejs";
-export const maxDuration = 600;
+export const maxDuration = 300;
 
 // Cron endpoint chiamato da Vercel Cron.
 // Autenticato via header Authorization: Bearer <CRON_SECRET>

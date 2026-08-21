@@ -3,7 +3,7 @@ import { findPlace, type PlacesResult } from "./sources/google-places";
 import { scrapeWebsite, type ScrapedSite } from "./sources/website-scrape";
 import { extractFromWebsite, type LlmExtraction } from "./sources/llm-extract";
 
-const BATCH_SIZE = 30;
+const BATCH_SIZE = 15; // scrape + LLM per agenzia ~10s → 15 × 10s = 150s < 300s (Hobby limit)
 const REFRESH_DAYS = 30;
 
 // Colonne che il curatore potrebbe aver compilato manualmente: NON sovrascriviamo

@@ -4,7 +4,7 @@ import { getAgent } from "@/lib/agents/registry";
 import { runAgent } from "@/lib/agents/framework";
 
 export const runtime = "nodejs";
-export const maxDuration = 600; // Places + scrape + Claude × 30 agenzie può richiedere fino a 10min
+export const maxDuration = 300; // Hobby plan max — se il batch di 30 non basta, ridurre BATCH_SIZE in run.ts
 
 // Trigger manuale da dashboard.
 // Autenticato via Supabase JWT (Bearer token dall'utente loggato).
