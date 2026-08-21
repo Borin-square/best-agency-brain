@@ -10,6 +10,9 @@ const MAX_CANDIDATES = 20; // hard cap per non sforare timeout Hobby (300s)
 const MAX_SOURCES = 10;
 const MAX_KEYWORDS = 5;
 const SEARCH_LIMIT_PER_KEYWORD = 8;
+// Budget SERP totali per run (Firecrawl free = 10/min, ogni chiamata attende 7s).
+// 6 keyword-search + 2 fallback per candidati = ~56s min waste per throttle.
+const MAX_SERP_CALLS = 8;
 
 export interface ScouterPayload {
   directory_urls?: string[];
@@ -57,16 +60,10 @@ function parseArr(v: unknown): string[] {
 
 function keywordVariants(kw: string, geo: string | undefined): string[] {
   const base = kw.trim();
-  const out = new Set<string>([base]);
-  if (geo) {
-    out.add(`${base} ${geo}`);
-    out.add(`migliori ${base} ${geo}`);
-    out.add(`top ${base} ${geo}`);
-  } else {
-    out.add(`migliori ${base}`);
-    out.add(`top ${base}`);
-  }
-  return Array.from(out).slice(0, 4);
+  // Solo 2 varianti per contenere il rate limit Firecrawl (10 req/min free).
+  // Se serve più copertura, l'utente può eseguire più scouting run.
+  if (geo) return [`${base} ${geo}`, `migliori ${base} ${geo}`];
+  return [base, `migliori ${base}`];
 }
 
 // Chiave di merge dei candidati (nome normalizzato + dominio hint quando disponibile).
@@ -122,6 +119,7 @@ export async function runAgencyScouter(ctx: AgentContext): Promise<AgentResult> 
 
   const errors: Array<{ source_url: string; error_type: string; message: string }> = [];
   const rawCandidates = new Map<string, RawCandidate>();
+  let serpCallsUsed = 0;
 
   // ---- 1. Scrape URL fonti (directory + award + magazine) ----
   const urlSources: Array<{ url: string; type: SourceType }> = [
@@ -159,10 +157,15 @@ export async function runAgencyScouter(ctx: AgentContext): Promise<AgentResult> 
   }
 
   // ---- 2. SERP via Firecrawl search ----
-  for (const kw of keywords) {
+  outerKw: for (const kw of keywords) {
     const variants = keywordVariants(kw, geo);
     for (const q of variants) {
+      if (serpCallsUsed >= MAX_SERP_CALLS) {
+        ctx.log("serp_budget_exhausted", { limit: MAX_SERP_CALLS });
+        break outerKw;
+      }
       try {
+        serpCallsUsed++;
         const hits: SearchHit[] = await firecrawlSearch(q, {
           limit: SEARCH_LIMIT_PER_KEYWORD,
           lang,
@@ -241,8 +244,16 @@ export async function runAgencyScouter(ctx: AgentContext): Promise<AgentResult> 
       if (!d || isDirectoryOrSocialDomain(d)) officialUrl = null;
     }
     if (!officialUrl) {
+      if (serpCallsUsed >= MAX_SERP_CALLS) {
+        outcome.notes = `Sito ufficiale non disponibile e budget SERP esaurito (${MAX_SERP_CALLS}/run)`;
+        outcome.status = "REVIEW_REQUIRED";
+        review++;
+        outcomes.push(outcome);
+        continue;
+      }
       // fallback: SERP query "nome + città"
       try {
+        serpCallsUsed++;
         const searchQ = geo ? `${cand.name} ${geo}` : cand.name;
         const hits = await firecrawlSearch(searchQ, { limit: 5, lang, country: lang });
         const first = hits.find((h) => {

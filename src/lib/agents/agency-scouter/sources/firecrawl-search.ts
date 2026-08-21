@@ -6,6 +6,17 @@
 const FIRECRAWL_SEARCH_URL = "https://api.firecrawl.dev/v1/search";
 const TIMEOUT_MS = 30_000;
 
+// Free tier: 10 req/min. Distanziamo a 7s → max ~8/min per stare comodi.
+const MIN_INTERVAL_MS = 7000;
+let lastCallAt = 0;
+
+async function throttle() {
+  const now = Date.now();
+  const wait = lastCallAt + MIN_INTERVAL_MS - now;
+  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+  lastCallAt = Date.now();
+}
+
 export interface SearchHit {
   url: string;
   title: string;
@@ -24,6 +35,8 @@ export async function firecrawlSearch(
 ): Promise<SearchHit[]> {
   const apiKey = process.env.FIRECRAWL_API_KEY;
   if (!apiKey) throw new Error("FIRECRAWL_API_KEY missing");
+
+  await throttle();
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
