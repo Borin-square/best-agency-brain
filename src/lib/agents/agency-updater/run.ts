@@ -2,6 +2,7 @@ import type { AgentContext, AgentResult } from "../framework";
 import { findPlace, type PlacesResult } from "./sources/google-places";
 import { scrapeWebsite, type ScrapedSite } from "./sources/website-scrape";
 import { extractFromWebsite, type LlmExtraction } from "./sources/llm-extract";
+import { resolveItalianAddress } from "./sources/geo-resolver";
 
 const BATCH_SIZE = 15; // scrape + LLM per agenzia ~10s → 15 × 10s = 150s < 300s (Hobby limit)
 const MAX_MANUAL_IDS = 30; // limite hard su selezione manuale per non sforare timeout
@@ -10,11 +11,10 @@ const REFRESH_DAYS = 30;
 // Solo domini con status "attivo" vengono arricchiti dal cron globale.
 const ACTIVE_DOMAIN_STATUSES = ["online", "fase_1", "fase_2", "fase_3"] as const;
 
-// Colonne che il curatore potrebbe aver compilato manualmente: NON sovrascriviamo
-// se già presenti. L'LLM riempie solo i buchi.
-const LLM_TARGET_FIELDS = [
-  "descrizione_breve",
-  "content",
+// L'LLM riempie i buchi (rispetta curatela) tranne descrizione_breve + content
+// che vengono SEMPRE sovrascritti quando disponibili — obiettivo: descrizioni
+// di qualità uniforme scritte dall'LLM sulla base del sito.
+const LLM_FILL_IF_EMPTY = [
   "competenze",
   "caratteristiche",
   "anno_di_fondazione",
@@ -30,7 +30,9 @@ const LLM_TARGET_FIELDS = [
   "indirizzo_completo",
 ] as const;
 
-type LlmTargetField = (typeof LLM_TARGET_FIELDS)[number];
+const LLM_ALWAYS_OVERWRITE = ["descrizione_breve", "content"] as const;
+
+type LlmFillField = (typeof LLM_FILL_IF_EMPTY)[number];
 
 interface AgencyRow {
   id: string;
@@ -247,15 +249,38 @@ export async function runAgencyUpdater(ctx: AgentContext): Promise<AgentResult> 
       updated.push("match_confidence");
     }
 
-    // L'LLM riempie solo i campi vuoti (rispetta curatela manuale).
+    // L'LLM riempie i campi vuoti (rispetta curatela manuale) …
     if (llmData) {
-      for (const field of LLM_TARGET_FIELDS) {
-        const currentValue = agency[field as LlmTargetField];
+      for (const field of LLM_FILL_IF_EMPTY) {
+        const currentValue = agency[field as LlmFillField];
         const newValue = llmData[field];
         if (isEmpty(currentValue) && !isEmpty(newValue)) {
           updateFields[field] = newValue;
           updated.push(field);
         }
+      }
+      // … ma sovrascrive sempre descrizione_breve e content quando l'LLM
+      // produce contenuti (obiettivo: descrizioni di qualità uniforme).
+      for (const field of LLM_ALWAYS_OVERWRITE) {
+        const newValue = llmData[field];
+        if (!isEmpty(newValue)) {
+          updateFields[field] = newValue;
+          updated.push(field);
+        }
+      }
+    }
+
+    // Geo resolver: parsa google_indirizzo (o LLM indirizzo_completo come
+    // fallback) → override città/regione/aree in formato "Regione>Città".
+    // SEMPRE sovrascritto (le aree WP erano sbagliate).
+    const geoSource = placesData?.address ?? llmData?.indirizzo_completo ?? null;
+    if (geoSource) {
+      const geo = resolveItalianAddress(geoSource);
+      if (geo) {
+        updateFields.aree = geo.aree;
+        updateFields.citta = geo.citta_slug;
+        updateFields.regioni = geo.regioni_slug;
+        updated.push("aree", "citta", "regioni");
       }
     }
 

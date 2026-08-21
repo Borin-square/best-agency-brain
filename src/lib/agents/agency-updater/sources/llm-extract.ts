@@ -39,11 +39,13 @@ const EXTRACTION_SCHEMA = {
     properties: {
       descrizione_breve: {
         type: ["string", "null"],
-        description: "Payoff / tagline, max 200 caratteri.",
+        description:
+          "Payoff SEO-friendly, 140-180 caratteri, orientato al cliente (chi sono, cosa fanno, per chi). No claim vaghi tipo 'siamo i migliori'.",
       },
       content: {
         type: ["string", "null"],
-        description: "Descrizione lunga in italiano (2-4 frasi) su cosa fa l'agenzia.",
+        description:
+          "Descrizione lunga in italiano ben strutturata (600-1200 caratteri, 3-5 paragrafi separati da doppio a-capo). Struttura: (1) chi sono e cosa fanno in 1 frase, (2) servizi/aree di competenza principali, (3) target clienti tipico + settori, (4) elemento distintivo/approccio. Tono professionale, no marketing gonfiato. Basato solo su ciò che è verificabile dal testo — se un blocco non è ricavabile, saltalo.",
       },
       competenze: {
         type: ["array", "null"],
@@ -117,13 +119,18 @@ const EXTRACTION_SCHEMA = {
 function buildPrompt(scraped: ScrapedSite, agencyName: string): string {
   return `Analizza il testo del sito ufficiale di questa agenzia italiana ed estrai i campi richiesti.
 
-REGOLE FERREE:
+REGOLE FERREE per i dati fattuali:
 - Ritorna null per qualsiasi campo NON chiaramente evidente. Non inventare mai.
 - anno_di_fondazione: accetta solo se citato ("fondata nel 2015", "since 2010", "dal 2020").
 - partita_iva: solo 11 cifre italiane. Ignora codici fiscali (16 char) e numeri REA.
 - URL social: URL completo (https://linkedin.com/company/...).
-- descrizione_breve max 200 char; content 2-4 frasi.
 - competenze/caratteristiche: max 12 elementi, lowercase, no duplicati.
+
+REGOLE per le descrizioni (descrizione_breve + content):
+- Scrivi in italiano professionale e diretto, per un cliente che deve capire in 10 secondi se contattare l'agenzia.
+- descrizione_breve: 140-180 char. Formula tipo "[Cosa fa] per [chi/dove]. [Elemento distintivo se noto]."
+- content: 600-1200 char, 3-5 paragrafi separati da doppio a-capo (\\n\\n). Segui la struttura in schema. NO frasi vuote come "leader nel settore", "eccellenza a 360°", "soluzioni innovative". Ogni frase deve dire un fatto specifico.
+- Se il sito è povero di info non gonfiare: piuttosto content più corto ma vero.
 
 Agenzia: ${agencyName}
 URL: ${scraped.final_url}
