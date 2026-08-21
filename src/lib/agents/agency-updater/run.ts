@@ -192,14 +192,16 @@ export async function runAgencyUpdater(ctx: AgentContext): Promise<AgentResult> 
     if (targetSite) {
       try {
         scrapeData = await scrapeWebsite(targetSite);
-        scrapeStatus = scrapeData ? 200 : 404;
-        if (scrapeData) scrapeHits++;
+        scrapeStatus = 200;
+        scrapeHits++;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         itemErrors.website_scrape = msg;
         scrapeStatus = "error";
         ctx.log("scrape_error", { agencyId: agency.id, url: targetSite, error: msg });
       }
+    } else {
+      ctx.log("scrape_skip_no_url", { agencyId: agency.id });
     }
 
     // ---- LLM extraction (OpenAI) ----

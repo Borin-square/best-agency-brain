@@ -64,33 +64,70 @@ function htmlToText(html: string): string {
     .trim();
 }
 
-export async function scrapeWebsite(rawUrl: string): Promise<ScrapedSite | null> {
+// UA di un browser reale: molti siti (Cloudflare, WAF vari) bloccano UA
+// che contengono "bot", "crawler", ecc. Nessun rischio abuso: 1 request per agenzia.
+const BROWSER_UA =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+
+// Errori dettagliati per capire cosa è andato storto (visibili in enrichment_errors).
+// Solleviamo Error così run.ts li cattura e li registra.
+export class ScrapeError extends Error {
+  constructor(public reason: string, message: string) {
+    super(message);
+    this.name = "ScrapeError";
+  }
+}
+
+export async function scrapeWebsite(rawUrl: string): Promise<ScrapedSite> {
   const url = normalizeUrl(rawUrl);
-  if (!url) return null;
+  if (!url) throw new ScrapeError("invalid_url", `URL non valido: ${rawUrl}`);
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   try {
-    const res = await fetch(url, {
-      redirect: "follow",
-      signal: controller.signal,
-      headers: {
-        "user-agent":
-          "Mozilla/5.0 (compatible; MiglioreAgenziaBot/1.0; +https://miglioreagenzia.it)",
-        accept: "text/html,application/xhtml+xml",
-      },
-    });
-    if (!res.ok) return null;
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        redirect: "follow",
+        signal: controller.signal,
+        headers: {
+          "user-agent": BROWSER_UA,
+          accept:
+            "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+          "accept-language": "it-IT,it;q=0.9,en;q=0.8",
+        },
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new ScrapeError(
+        controller.signal.aborted ? "timeout" : "network_error",
+        controller.signal.aborted ? `Timeout dopo ${TIMEOUT_MS}ms su ${url}` : `${msg} (${url})`,
+      );
+    }
+
+    if (!res.ok) {
+      throw new ScrapeError("http_error", `HTTP ${res.status} da ${url}`);
+    }
     const ct = res.headers.get("content-type") ?? "";
-    if (!ct.includes("html")) return null;
+    if (!ct.includes("html") && !ct.includes("xml") && !ct.includes("text")) {
+      throw new ScrapeError("wrong_content_type", `Content-Type non-HTML: ${ct} (${url})`);
+    }
 
     const buffer = await res.arrayBuffer();
+    if (buffer.byteLength === 0) {
+      throw new ScrapeError("empty_response", `Body vuoto da ${url}`);
+    }
     const truncated = buffer.byteLength > MAX_BYTES ? buffer.slice(0, MAX_BYTES) : buffer;
     const html = new TextDecoder("utf-8", { fatal: false }).decode(truncated);
 
     const text = htmlToText(html).slice(0, MAX_TEXT_CHARS);
-    if (text.length < 100) return null;
+    if (text.length < 100) {
+      throw new ScrapeError(
+        "too_little_text",
+        `Solo ${text.length} char di testo utile da ${url} (probabile SPA o pagina vuota)`,
+      );
+    }
 
     return {
       url,
