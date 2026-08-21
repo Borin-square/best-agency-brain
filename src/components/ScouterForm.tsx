@@ -84,7 +84,7 @@ export default function ScouterForm({ agentId, domainId, domainLabel, onDone }: 
       });
       const data = (await res.json()) as RunResult;
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-      setResult({ ok: true, ...data });
+      setResult({ ...data, ok: true });
       onDone();
     } catch (e) {
       setResult({ ok: false, error: (e as Error).message });
