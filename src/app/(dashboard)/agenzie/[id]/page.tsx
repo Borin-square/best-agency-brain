@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { use, useEffect, useState } from "react";
+import { computeAgencyScore, type ScorableAgency } from "@/lib/agency-score";
 
 interface Agency {
   id: string;
@@ -53,8 +54,104 @@ interface Agency {
   enrichment_errors: Record<string, unknown> | null;
   sources_used: Record<string, unknown> | null;
 
+  logo_url: string | null;
+  photos: unknown | null;
+  portfolio: unknown | null;
+  case_studies: unknown | null;
+  google_partner_cert: boolean | null;
+
   created_at: string;
   updated_at: string;
+}
+
+function ScoreCard({ agency }: { agency: ScorableAgency }) {
+  const [expanded, setExpanded] = useState(false);
+  const score = computeAgencyScore(agency);
+  const color =
+    score.total >= 75 ? "var(--grn)" : score.total >= 40 ? "var(--yel, #eab308)" : "var(--red)";
+  return (
+    <div className="cd" style={{ marginTop: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+        <div style={{ minWidth: 120 }}>
+          <div className="lb">Completezza</div>
+          <div style={{ fontSize: 32, fontWeight: 600, color, lineHeight: 1 }}>
+            {score.total}
+            <span style={{ fontSize: 14, color: "var(--fg3)", marginLeft: 2 }}>/100</span>
+          </div>
+          <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+            {score.earnedPoints}/{score.maxPoints} punti
+          </div>
+        </div>
+        <div style={{ flex: 1 }}>
+          <div
+            style={{
+              height: 8,
+              borderRadius: 4,
+              background: "var(--bg3)",
+              overflow: "hidden",
+              marginBottom: 10,
+            }}
+          >
+            <div
+              style={{
+                width: `${score.total}%`,
+                height: "100%",
+                background: color,
+                transition: "width .3s ease",
+              }}
+            />
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {score.breakdown.map((it) => (
+              <span
+                key={it.key}
+                title={`${it.label} · ${it.weight} punti`}
+                className={`bd-badge ${it.done ? "bd-success" : "bd-muted"}`}
+                style={{ fontSize: 11 }}
+              >
+                {it.done ? "✓" : "○"} {it.label}
+              </span>
+            ))}
+          </div>
+        </div>
+        <button
+          className="btn"
+          onClick={() => setExpanded((v) => !v)}
+          style={{ alignSelf: "flex-start", fontSize: 11 }}
+        >
+          {expanded ? "Chiudi" : "Dettaglio"}
+        </button>
+      </div>
+      {expanded && (
+        <table className="tbl" style={{ marginTop: 14 }}>
+          <thead>
+            <tr>
+              <th>Campo</th>
+              <th style={{ width: 80 }}>Peso</th>
+              <th style={{ width: 80 }}>Stato</th>
+              <th style={{ width: 80 }}>Punti</th>
+            </tr>
+          </thead>
+          <tbody>
+            {score.breakdown.map((it) => (
+              <tr key={it.key}>
+                <td>{it.label}</td>
+                <td className="muted">{it.weight}</td>
+                <td>
+                  {it.done ? (
+                    <span className="bd-badge bd-success">Ok</span>
+                  ) : (
+                    <span className="bd-badge bd-muted">Manca</span>
+                  )}
+                </td>
+                <td>{it.earned}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
 }
 
 function Field({ label, value, mono }: { label: string; value: React.ReactNode; mono?: boolean }) {
@@ -178,6 +275,8 @@ export default function AgencyDetailPage({ params }: { params: Promise<{ id: str
           )}
         </div>
       </div>
+
+      <ScoreCard agency={agency} />
 
       <Section title="Core">
         <Field label="Title" value={agency.title} />
