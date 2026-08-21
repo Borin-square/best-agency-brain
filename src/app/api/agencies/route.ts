@@ -6,19 +6,32 @@ const PAGE_SIZE = 25;
 // Lista agenzie paginata + filtri.
 // Query params:
 //   page (default 1)
+//   domain_id
 //   q (search su title)
-//   citta
+//   regione, citta (slug)
 //   verifica
 //   status_curatela
 //   enriched (yes|no)
+//   enrichment_status (success|partial|error)
+//   has_website (yes|no)
+//   has_email (yes|no)
+//   has_phone (yes|no)
+//   min_rating (numero 0-5)
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "1", 10));
   const q = url.searchParams.get("q")?.trim();
+  const regione = url.searchParams.get("regione")?.trim();
   const citta = url.searchParams.get("citta")?.trim();
   const verifica = url.searchParams.get("verifica")?.trim();
   const statusCuratela = url.searchParams.get("status_curatela")?.trim();
   const enriched = url.searchParams.get("enriched");
+  const enrichmentStatus = url.searchParams.get("enrichment_status")?.trim();
+  const hasWebsite = url.searchParams.get("has_website");
+  const hasEmail = url.searchParams.get("has_email");
+  const hasPhone = url.searchParams.get("has_phone");
+  const minRatingRaw = url.searchParams.get("min_rating");
+  const minRating = minRatingRaw ? parseFloat(minRatingRaw) : NaN;
   const domainId = url.searchParams.get("domain_id")?.trim();
 
   const supabase = createServiceClient();
@@ -33,11 +46,22 @@ export async function GET(req: NextRequest) {
 
   if (domainId) query = query.eq("domain_id", domainId);
   if (q) query = query.ilike("title", `%${q}%`);
+  if (regione) query = query.eq("regioni", regione);
   if (citta) query = query.eq("citta", citta);
   if (verifica) query = query.eq("verifica", verifica);
   if (statusCuratela) query = query.eq("status_curatela", statusCuratela);
   if (enriched === "yes") query = query.not("last_enriched_at", "is", null);
   if (enriched === "no") query = query.is("last_enriched_at", null);
+  if (enrichmentStatus) query = query.eq("enrichment_status", enrichmentStatus);
+  if (hasWebsite === "yes") query = query.not("sito_web", "is", null);
+  if (hasWebsite === "no") query = query.is("sito_web", null);
+  if (hasEmail === "yes") query = query.not("email", "is", null);
+  if (hasEmail === "no") query = query.is("email", null);
+  if (hasPhone === "yes") query = query.not("telefono", "is", null);
+  if (hasPhone === "no") query = query.is("telefono", null);
+  if (!Number.isNaN(minRating) && minRating > 0) {
+    query = query.gte("google_rating", minRating);
+  }
 
   const from = (page - 1) * PAGE_SIZE;
   const to = from + PAGE_SIZE - 1;

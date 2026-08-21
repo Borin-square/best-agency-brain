@@ -61,10 +61,24 @@ export default function AgenziePage() {
   const [list, setList] = useState<ListResponse | null>(null);
   const [page, setPage] = useState(1);
   const [q, setQ] = useState("");
+  const [regione, setRegione] = useState("");
+  const [citta, setCitta] = useState("");
+  const [verifica, setVerifica] = useState("");
   const [enriched, setEnriched] = useState<"" | "yes" | "no">("");
+  const [enrichmentStatus, setEnrichmentStatus] = useState("");
+  const [hasWebsite, setHasWebsite] = useState<"" | "yes" | "no">("");
+  const [minRating, setMinRating] = useState("");
   const [showUpload, setShowUpload] = useState(false);
   const [exportUrl, setExportUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+
+  const [filterOpts, setFilterOpts] = useState<{
+    regioni: string[];
+    citta: string[];
+    citta_by_regione: Record<string, string[]>;
+    verifica: string[];
+    enrichment_status: string[];
+  }>({ regioni: [], citta: [], citta_by_regione: {}, verifica: [], enrichment_status: [] });
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [agents, setAgents] = useState<AgentMeta[]>([]);
@@ -82,19 +96,68 @@ export default function AgenziePage() {
     if (!currentDomainId) return;
     const params = new URLSearchParams({ page: String(page), domain_id: currentDomainId });
     if (q.trim()) params.set("q", q.trim());
+    if (regione) params.set("regione", regione);
+    if (citta) params.set("citta", citta);
+    if (verifica) params.set("verifica", verifica);
     if (enriched) params.set("enriched", enriched);
+    if (enrichmentStatus) params.set("enrichment_status", enrichmentStatus);
+    if (hasWebsite) params.set("has_website", hasWebsite);
+    if (minRating) params.set("min_rating", minRating);
     const res = await fetch(`/api/agencies?${params}`);
     if (res.ok) setList(await res.json());
-  }, [page, q, enriched, currentDomainId]);
+  }, [
+    page,
+    q,
+    regione,
+    citta,
+    verifica,
+    enriched,
+    enrichmentStatus,
+    hasWebsite,
+    minRating,
+    currentDomainId,
+  ]);
+
+  const loadFilterOptions = useCallback(async () => {
+    if (!currentDomainId) return;
+    const res = await fetch(`/api/agencies/filter-options?domain_id=${currentDomainId}`);
+    if (res.ok) setFilterOpts(await res.json());
+  }, [currentDomainId]);
 
   useEffect(() => {
     loadStats();
   }, [loadStats]);
 
   useEffect(() => {
+    loadFilterOptions();
+  }, [loadFilterOptions]);
+
+  useEffect(() => {
     loadList();
     setSelected(new Set()); // reset selezione al cambio dominio/filtro/pagina
   }, [loadList]);
+
+  const activeFilters =
+    Number(!!q.trim()) +
+    Number(!!regione) +
+    Number(!!citta) +
+    Number(!!verifica) +
+    Number(!!enriched) +
+    Number(!!enrichmentStatus) +
+    Number(!!hasWebsite) +
+    Number(!!minRating);
+
+  function resetFilters() {
+    setQ("");
+    setRegione("");
+    setCitta("");
+    setVerifica("");
+    setEnriched("");
+    setEnrichmentStatus("");
+    setHasWebsite("");
+    setMinRating("");
+    setPage(1);
+  }
 
   useEffect(() => {
     fetch("/api/agents")
@@ -362,7 +425,15 @@ export default function AgenziePage() {
       )}
 
       {/* Filtri */}
-      <div style={{ display: "flex", gap: 10, marginTop: 24, alignItems: "center" }}>
+      <div
+        style={{
+          display: "flex",
+          gap: 8,
+          marginTop: 24,
+          alignItems: "center",
+          flexWrap: "wrap",
+        }}
+      >
         <input
           type="text"
           placeholder="Cerca per nome…"
@@ -371,38 +442,118 @@ export default function AgenziePage() {
             setQ(e.target.value);
             setPage(1);
           }}
-          style={{
-            flex: 1,
-            maxWidth: 320,
-            padding: "8px 12px",
-            background: "var(--bg3)",
-            border: "1px solid var(--bd)",
-            color: "var(--fg)",
-            borderRadius: 6,
-            fontSize: 13,
-            fontFamily: "inherit",
-          }}
+          style={{ ...inputStyle, flex: "1 1 220px", maxWidth: 280 }}
         />
+        <select
+          value={regione}
+          onChange={(e) => {
+            setRegione(e.target.value);
+            setCitta(""); // reset città quando cambia regione
+            setPage(1);
+          }}
+          style={inputStyle}
+        >
+          <option value="">Regione (tutte)</option>
+          {filterOpts.regioni.map((r) => (
+            <option key={r} value={r}>
+              {r}
+            </option>
+          ))}
+        </select>
+        <select
+          value={citta}
+          onChange={(e) => {
+            setCitta(e.target.value);
+            setPage(1);
+          }}
+          style={inputStyle}
+        >
+          <option value="">Città (tutte)</option>
+          {(regione ? filterOpts.citta_by_regione[regione] ?? [] : filterOpts.citta).map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+        <select
+          value={verifica}
+          onChange={(e) => {
+            setVerifica(e.target.value);
+            setPage(1);
+          }}
+          style={inputStyle}
+        >
+          <option value="">Verifica (tutte)</option>
+          {filterOpts.verifica.map((v) => (
+            <option key={v} value={v}>
+              {v}
+            </option>
+          ))}
+        </select>
         <select
           value={enriched}
           onChange={(e) => {
             setEnriched(e.target.value as "" | "yes" | "no");
             setPage(1);
           }}
-          style={{
-            padding: "8px 12px",
-            background: "var(--bg3)",
-            border: "1px solid var(--bd)",
-            color: "var(--fg)",
-            borderRadius: 6,
-            fontSize: 13,
-            fontFamily: "inherit",
-          }}
+          style={inputStyle}
         >
-          <option value="">Tutte</option>
-          <option value="yes">Arricchite</option>
-          <option value="no">Non arricchite</option>
+          <option value="">Arricchite (tutte)</option>
+          <option value="yes">Sì</option>
+          <option value="no">Mai</option>
         </select>
+        <select
+          value={enrichmentStatus}
+          onChange={(e) => {
+            setEnrichmentStatus(e.target.value);
+            setPage(1);
+          }}
+          style={inputStyle}
+        >
+          <option value="">Status enrich (tutti)</option>
+          {filterOpts.enrichment_status.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
+        <select
+          value={hasWebsite}
+          onChange={(e) => {
+            setHasWebsite(e.target.value as "" | "yes" | "no");
+            setPage(1);
+          }}
+          style={inputStyle}
+        >
+          <option value="">Sito (indifferente)</option>
+          <option value="yes">Con sito</option>
+          <option value="no">Senza sito</option>
+        </select>
+        <select
+          value={minRating}
+          onChange={(e) => {
+            setMinRating(e.target.value);
+            setPage(1);
+          }}
+          style={inputStyle}
+        >
+          <option value="">Rating (qualsiasi)</option>
+          <option value="3">⭐ 3+</option>
+          <option value="4">⭐ 4+</option>
+          <option value="4.5">⭐ 4.5+</option>
+          <option value="4.8">⭐ 4.8+</option>
+        </select>
+
+        {activeFilters > 0 && (
+          <button
+            className="btn"
+            onClick={resetFilters}
+            style={{ fontSize: 11, padding: "6px 10px" }}
+          >
+            ✕ Reset ({activeFilters})
+          </button>
+        )}
+
         {list && (
           <span className="muted" style={{ marginLeft: "auto", fontSize: 12 }}>
             {list.total} risultati · pag {list.page}/{list.pages || 1}
@@ -617,3 +768,13 @@ export default function AgenziePage() {
     </div>
   );
 }
+
+const inputStyle: React.CSSProperties = {
+  padding: "7px 10px",
+  background: "var(--bg3)",
+  border: "1px solid var(--bd)",
+  color: "var(--fg)",
+  borderRadius: 6,
+  fontSize: 12,
+  fontFamily: "inherit",
+};
