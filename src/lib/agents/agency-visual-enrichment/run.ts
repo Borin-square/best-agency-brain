@@ -1,5 +1,5 @@
 import type { AgentContext, AgentResult } from "../framework";
-import { fetchPage, findTeamPageLinks } from "./sources/fetch-page";
+import { fetchPageWithFallback, fetchPage, findTeamPageLinks } from "./sources/fetch-page";
 import { classifyVisuals, type ImageCandidate } from "./sources/classify-visuals";
 import { downloadImage, uploadToStorage } from "./storage";
 import { extFromMime, extFromUrl, slugify, shortHash } from "./utils";
@@ -206,16 +206,26 @@ export async function runAgencyVisualEnrichment(ctx: AgentContext): Promise<Agen
     const { logoAlt, logoDesc, teamAlt, teamDesc } = buildAltDescriptions(agency.title, agency.citta);
     const slug = slugify(agency.title) || `agency-${agency.id.slice(0, 8)}`;
 
-    // ---- 1. Fetch homepage
-    const home = await fetchPage(agency.sito_web);
-    if (!home) {
+    // ---- 1. Fetch homepage (native → fallback Firecrawl)
+    const homeOutcome = await fetchPageWithFallback(agency.sito_web);
+    if (!homeOutcome.page) {
       outcome.logo.status = "ERROR";
-      outcome.logo.notes = "Homepage non raggiungibile";
+      outcome.logo.notes = `Homepage non raggiungibile: ${homeOutcome.error ?? "unknown"}`;
       outcome.database_action = "ERROR";
+      errors.push({
+        agency_id: agency.id,
+        asset_type: "LOGO",
+        source_url: agency.sito_web,
+        error_type: "fetch_homepage",
+        message: homeOutcome.error ?? "unknown",
+      });
+      ctx.log("fetch_home_failed", { agencyId: agency.id, url: agency.sito_web, error: homeOutcome.error });
       errCount++;
       outcomes.push(outcome);
       continue;
     }
+    const home = homeOutcome.page;
+    ctx.log("home_fetched", { agencyId: agency.id, source: homeOutcome.source });
 
     // ---- 2. Fetch team/about pages (max 2)
     const teamLinks = findTeamPageLinks(home.links_internal);

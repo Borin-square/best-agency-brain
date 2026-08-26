@@ -1,5 +1,6 @@
 // Fetch HTML raw + estrazione immagini (img, og:image, JSON-LD Organization.logo).
 // A differenza di scrapeWebsite (che strippa i tag), qui teniamo l'HTML per parsing DOM-like via regex.
+// Strategia 2 livelli: nativo → fallback Firecrawl (con formats:['html']) se native fallisce.
 
 import { absoluteUrl, cleanUrl } from "../utils";
 
@@ -26,7 +27,13 @@ export interface ExtractedImage {
   surrounding_text: string | null; // ~100 char di contesto (per team detection)
 }
 
-export async function fetchPage(url: string): Promise<FetchedPage | null> {
+export interface FetchOutcome {
+  page: FetchedPage | null;
+  source: "native" | "firecrawl" | "failed";
+  error: string | null;
+}
+
+async function nativeFetch(url: string): Promise<FetchedPage | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
@@ -39,18 +46,54 @@ export async function fetchPage(url: string): Promise<FetchedPage | null> {
         "accept-language": "it-IT,it;q=0.9,en;q=0.8",
       },
     });
-    if (!res.ok) return null;
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const ct = res.headers.get("content-type") ?? "";
-    if (!ct.includes("html") && !ct.includes("xml")) return null;
+    if (!ct.includes("html") && !ct.includes("xml")) throw new Error(`content-type: ${ct}`);
     const buffer = await res.arrayBuffer();
     const truncated = buffer.byteLength > MAX_HTML ? buffer.slice(0, MAX_HTML) : buffer;
     const html = new TextDecoder("utf-8", { fatal: false }).decode(truncated);
     return parseHtml(res.url, html);
-  } catch {
-    return null;
   } finally {
     clearTimeout(timer);
   }
+}
+
+// Retry via Firecrawl con HTML raw se native fallisce (WAF/Cloudflare/SPA).
+async function firecrawlFetch(url: string): Promise<FetchedPage | null> {
+  const apiKey = process.env.FIRECRAWL_API_KEY;
+  if (!apiKey) return null;
+  const { firecrawlScrape } = await import("../../agency-updater/sources/firecrawl-scrape");
+  try {
+    const result = await firecrawlScrape(url, { fullContent: true, returnHtml: true });
+    const html = result.raw_html;
+    if (!html || html.length < 100) return null;
+    return parseHtml(result.final_url, html);
+  } catch {
+    return null;
+  }
+}
+
+// Backward-compat: mantiene la firma originale ma internamente usa fetchPageWithFallback.
+export async function fetchPage(url: string): Promise<FetchedPage | null> {
+  const out = await fetchPageWithFallback(url);
+  return out.page;
+}
+
+export async function fetchPageWithFallback(url: string): Promise<FetchOutcome> {
+  let nativeErr: string | null = null;
+  try {
+    const p = await nativeFetch(url);
+    if (p) return { page: p, source: "native", error: null };
+  } catch (err) {
+    nativeErr = err instanceof Error ? err.message : String(err);
+  }
+  const fc = await firecrawlFetch(url);
+  if (fc) return { page: fc, source: "firecrawl", error: nativeErr };
+  return {
+    page: null,
+    source: "failed",
+    error: nativeErr ?? "fetch fallito (native + firecrawl)",
+  };
 }
 
 // ---- Parsing HTML via regex (no dep). Robusto abbastanza per un MVP. ----

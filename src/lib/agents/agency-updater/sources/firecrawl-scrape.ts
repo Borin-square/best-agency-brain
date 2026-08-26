@@ -35,12 +35,18 @@ export function hasFirecrawl(): boolean {
 
 export interface FirecrawlScrapeOptions {
   fullContent?: boolean; // true → onlyMainContent=false (utile per pagine elenco/directory)
+  returnHtml?: boolean;  // true → richiedi anche formats:['html'] e usa quello come .text
+}
+
+// Restituisce anche l'HTML raw se richiesto (per parsing img tags / DOM).
+export interface FirecrawlScrapeResult extends ScrapedSite {
+  raw_html?: string;
 }
 
 export async function firecrawlScrape(
   url: string,
   opts: FirecrawlScrapeOptions = {},
-): Promise<ScrapedSite> {
+): Promise<FirecrawlScrapeResult> {
   const apiKey = process.env.FIRECRAWL_API_KEY;
   if (!apiKey) throw new ScrapeError("no_firecrawl_key", "FIRECRAWL_API_KEY non configurata");
 
@@ -59,7 +65,7 @@ export async function firecrawlScrape(
         },
         body: JSON.stringify({
           url,
-          formats: ["markdown"],
+          formats: opts.returnHtml ? ["markdown", "html"] : ["markdown"],
           onlyMainContent: !opts.fullContent,
         }),
       });
@@ -104,6 +110,7 @@ export async function firecrawlScrape(
       meta_description: data.data.metadata?.description ?? null,
       text: markdown.slice(0, MAX_TEXT_CHARS),
       bytes: markdown.length,
+      raw_html: opts.returnHtml ? data.data.html : undefined,
     };
   } finally {
     clearTimeout(timer);
