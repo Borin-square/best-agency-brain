@@ -12,7 +12,18 @@ export const MAIN_NAV: NavItem[] = [
   { id: "agents", label: "Agents", href: "/agents", icon: "◈" },
   { id: "network", label: "Network", href: "/network", icon: "◐" },
   { id: "seo", label: "SEO", href: "/seo", icon: "↗" },
-  { id: "crm", label: "CRM", href: "/crm", icon: "✉" },
+  {
+    id: "crm",
+    label: "CRM",
+    href: "/crm",
+    icon: "✉",
+    children: [
+      { id: "crm-dashboard", label: "Dashboard", href: "/crm" },
+      { id: "crm-contacts", label: "Contatti", href: "/crm/contacts" },
+      { id: "crm-deals", label: "Deals", href: "/crm/deals" },
+      { id: "crm-campaigns", label: "Campagne", href: "/crm/campaigns" },
+    ],
+  },
   { id: "content", label: "Content", href: "/content", icon: "☰" },
 ];
 

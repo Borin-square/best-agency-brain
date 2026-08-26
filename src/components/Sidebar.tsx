@@ -33,22 +33,43 @@ export default function Sidebar() {
 
   function renderNav(items: typeof MAIN_NAV) {
     return items.map((it) => {
-      const active = it.href === pathname || (it.href !== "/" && pathname.startsWith(it.href ?? ""));
+      const active =
+        it.href === pathname || (it.href !== "/" && pathname.startsWith(it.href ?? ""));
+      const hasChildren = it.children && it.children.length > 0;
+      const expanded = hasChildren && active && !collapsed;
       return (
-        <Link
-          key={it.id}
-          href={it.href ?? "#"}
-          className={`ni d0${active ? " act" : ""}`}
-          title={collapsed ? it.label : undefined}
-          style={collapsed ? { justifyContent: "center", padding: "10px 0" } : undefined}
-        >
-          {it.icon && (
-            <span style={{ width: 18, textAlign: "center", fontSize: 14, opacity: 0.8 }}>
-              {it.icon}
-            </span>
+        <div key={it.id}>
+          <Link
+            href={it.href ?? "#"}
+            className={`ni d0${active ? " act" : ""}`}
+            title={collapsed ? it.label : undefined}
+            style={collapsed ? { justifyContent: "center", padding: "10px 0" } : undefined}
+          >
+            {it.icon && (
+              <span style={{ width: 18, textAlign: "center", fontSize: 14, opacity: 0.8 }}>
+                {it.icon}
+              </span>
+            )}
+            {!collapsed && <span>{it.label}</span>}
+          </Link>
+          {expanded && (
+            <div style={{ paddingLeft: 30, marginTop: 2, marginBottom: 6 }}>
+              {it.children!.map((child) => {
+                const childActive = pathname === child.href;
+                return (
+                  <Link
+                    key={child.id}
+                    href={child.href ?? "#"}
+                    className={`ni d0${childActive ? " act" : ""}`}
+                    style={{ padding: "5px 10px", fontSize: 12, opacity: childActive ? 1 : 0.75 }}
+                  >
+                    {child.label}
+                  </Link>
+                );
+              })}
+            </div>
           )}
-          {!collapsed && <span>{it.label}</span>}
-        </Link>
+        </div>
       );
     });
   }
