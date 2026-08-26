@@ -1,7 +1,11 @@
 // Google Places API (New) — Text Search
 // Docs: https://developers.google.com/maps/documentation/places/web-service/text-search
 //
-// Cerca l'agenzia per "title + città" e ritorna il primo match + confidence.
+// Strategia:
+//   1. Query = SOLO nome agenzia (senza città: le città legacy in DB sono spesso sbagliate)
+//   2. Chiediamo top 5 risultati
+//   3. Se un risultato ha websiteUri con dominio uguale ad agency.sito_web → match forte (conf 1.0)
+//   4. Altrimenti pick il best per similarity dei nomi (soglia 0.7 minima per accettare)
 
 export interface PlacesResult {
   place_id: string;
@@ -12,11 +16,10 @@ export interface PlacesResult {
   address: string | null;
   website: string | null;
   category: string | null;
-  photo_name: string | null;         // formato: "places/{id}/photos/{ref}" — URL costruibile on-demand
-  match_confidence: number;          // 0-1 basato su similarità token
+  photo_name: string | null;         // formato: "places/{id}/photos/{ref}"
+  match_confidence: number;          // 0-1 (1 = dominio matcha esattamente)
 }
 
-// FieldMask: paghi solo per i campi richiesti (tier Essentials + Pro)
 const FIELD_MASK = [
   "places.id",
   "places.displayName",
@@ -30,6 +33,8 @@ const FIELD_MASK = [
   "places.photos.name",
 ].join(",");
 
+const MIN_ACCEPTABLE_SIMILARITY = 0.7;
+
 function normalize(s: string): string {
   return s
     .toLowerCase()
@@ -41,21 +46,28 @@ function normalize(s: string): string {
     .trim();
 }
 
-// Jaccard similarity su token, con boost se una stringa è prefisso/contiene l'altra.
 function similarity(a: string, b: string): number {
   const na = normalize(a);
   const nb = normalize(b);
   if (!na || !nb) return 0;
   if (na === nb) return 1;
   if (na.startsWith(nb) || nb.startsWith(na)) return 0.9;
-
   const tokensA = new Set(na.split(" ").filter(Boolean));
   const tokensB = new Set(nb.split(" ").filter(Boolean));
   if (tokensA.size === 0 || tokensB.size === 0) return 0;
-
   const intersection = [...tokensA].filter((t) => tokensB.has(t)).length;
   const union = new Set([...tokensA, ...tokensB]).size;
   return Number((intersection / union).toFixed(2));
+}
+
+function domainOf(url: string | null | undefined): string | null {
+  if (!url) return null;
+  try {
+    const withScheme = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+    return new URL(withScheme).hostname.toLowerCase().replace(/^www\./, "");
+  } catch {
+    return null;
+  }
 }
 
 interface PlaceApiItem {
@@ -71,44 +83,10 @@ interface PlaceApiItem {
   photos?: Array<{ name: string }>;
 }
 
-export async function findPlace(
-  name: string,
-  city: string | null,
-): Promise<PlacesResult | null> {
-  const apiKey = process.env.GOOGLE_PLACES_API_KEY;
-  if (!apiKey) throw new Error("GOOGLE_PLACES_API_KEY missing");
-
-  const query = city ? `${name} ${city}` : name;
-
-  const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Goog-Api-Key": apiKey,
-      "X-Goog-FieldMask": FIELD_MASK,
-    },
-    body: JSON.stringify({
-      textQuery: query,
-      languageCode: "it",
-      regionCode: "IT",
-      pageSize: 1,
-    }),
-  });
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`Places API ${res.status}: ${body.slice(0, 200)}`);
-  }
-
-  const data = (await res.json()) as { places?: PlaceApiItem[] };
-  if (!data.places || data.places.length === 0) return null;
-
-  const p = data.places[0];
+function toResult(p: PlaceApiItem, name: string, confidence: number): PlacesResult {
   const displayName = p.displayName?.text ?? "";
-  const category = p.types?.find((t) => t !== "point_of_interest" && t !== "establishment")
-    ?? p.types?.[0]
-    ?? null;
-
+  const category =
+    p.types?.find((t) => t !== "point_of_interest" && t !== "establishment") ?? p.types?.[0] ?? null;
   return {
     place_id: p.id,
     display_name: displayName,
@@ -119,6 +97,65 @@ export async function findPlace(
     website: p.websiteUri ?? null,
     category,
     photo_name: p.photos?.[0]?.name ?? null,
-    match_confidence: similarity(name, displayName),
+    match_confidence: confidence,
   };
+}
+
+/**
+ * Trova il place più affidabile per un'agenzia.
+ * @param name       nome ufficiale (usato come query)
+ * @param website    sito ufficiale dell'agenzia — usato per validare il match via dominio
+ * @returns PlacesResult se trovato con conf >= 0.7 o domain match; altrimenti null
+ */
+export async function findPlace(
+  name: string,
+  website: string | null,
+): Promise<PlacesResult | null> {
+  const apiKey = process.env.GOOGLE_PLACES_API_KEY;
+  if (!apiKey) throw new Error("GOOGLE_PLACES_API_KEY missing");
+
+  const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": apiKey,
+      "X-Goog-FieldMask": FIELD_MASK,
+    },
+    body: JSON.stringify({
+      textQuery: name,
+      languageCode: "it",
+      regionCode: "IT",
+      pageSize: 5, // più candidati per validare via dominio
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Places API ${res.status}: ${body.slice(0, 200)}`);
+  }
+
+  const data = (await res.json()) as { places?: PlaceApiItem[] };
+  const places = data.places ?? [];
+  if (places.length === 0) return null;
+
+  const wantDomain = domainOf(website);
+
+  // 1. Cerca match forte via dominio
+  if (wantDomain) {
+    const domainMatch = places.find((p) => domainOf(p.websiteUri) === wantDomain);
+    if (domainMatch) return toResult(domainMatch, name, 1);
+  }
+
+  // 2. Fallback: best similarity — accetta solo se >= 0.7
+  let bestPlace: PlaceApiItem | null = null;
+  let bestConf = 0;
+  for (const p of places) {
+    const conf = similarity(name, p.displayName?.text ?? "");
+    if (conf > bestConf) {
+      bestConf = conf;
+      bestPlace = p;
+    }
+  }
+  if (!bestPlace || bestConf < MIN_ACCEPTABLE_SIMILARITY) return null;
+  return toResult(bestPlace, name, bestConf);
 }
