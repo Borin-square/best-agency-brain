@@ -55,7 +55,32 @@ interface Agency {
   sources_used: Record<string, unknown> | null;
 
   logo_url: string | null;
-  photos: unknown | null;
+  logo_meta: {
+    file_name?: string;
+    mime_type?: string;
+    width?: number | null;
+    height?: number | null;
+    alt_text?: string;
+    description?: string;
+    source_url?: string;
+    confidence?: number;
+    updated_at?: string;
+  } | null;
+  visual_enrichment_status: string | null;
+  visual_enriched_at: string | null;
+  photos: Array<{
+    public_url: string;
+    file_name: string;
+    mime_type: string;
+    width: number | null;
+    height: number | null;
+    alt_text: string;
+    description: string;
+    source_url: string;
+    source_page_url: string;
+    team_confidence: number;
+    uploaded_at: string;
+  }> | null;
   portfolio: unknown | null;
   case_studies: unknown | null;
   google_partner_cert: boolean | null;
@@ -312,8 +337,140 @@ export default function AgencyDetailPage({ params }: { params: Promise<{ id: str
         <Field label="LinkedIn" value={link(agency.linkedin)} />
         <Field label="Instagram" value={link(agency.instagram)} />
         <Field label="Behance" value={link(agency.behance)} />
-        <Field label="Foto del team" value={link(agency.foto_del_team)} />
+        <Field label="Foto del team (legacy)" value={link(agency.foto_del_team)} />
       </Section>
+
+      <div className="cd" style={{ marginTop: 16 }}>
+        <h2 style={{ marginBottom: 14, borderBottom: "1px solid var(--bd)", paddingBottom: 8 }}>
+          Visual enrichment
+        </h2>
+
+        {/* Logo */}
+        <div style={{ display: "grid", gridTemplateColumns: "180px 1fr", gap: 16, marginBottom: 20 }}>
+          <div>
+            <div className="lb">Logo</div>
+            {agency.logo_url ? (
+              <div
+                style={{
+                  marginTop: 6,
+                  padding: 10,
+                  background: "var(--bg3)",
+                  borderRadius: 6,
+                  border: "1px solid var(--bd)",
+                  minHeight: 100,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={agency.logo_url}
+                  alt={agency.logo_meta?.alt_text ?? `Logo di ${agency.title}`}
+                  style={{ maxWidth: "100%", maxHeight: 100, objectFit: "contain" }}
+                />
+              </div>
+            ) : (
+              <div style={{ marginTop: 6, color: "var(--fg3)", fontSize: 13 }}>—</div>
+            )}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <Field label="File" value={agency.logo_meta?.file_name} mono />
+            <Field
+              label="Dimensioni"
+              value={
+                agency.logo_meta?.width && agency.logo_meta?.height
+                  ? `${agency.logo_meta.width}×${agency.logo_meta.height}`
+                  : null
+              }
+            />
+            <Field label="MIME" value={agency.logo_meta?.mime_type} mono />
+            <Field
+              label="Confidence"
+              value={agency.logo_meta?.confidence != null ? `${(agency.logo_meta.confidence * 100).toFixed(0)}%` : null}
+            />
+            <div style={{ gridColumn: "1 / -1" }}>
+              <Field label="Fonte originale" value={link(agency.logo_meta?.source_url ?? null)} />
+            </div>
+            <div style={{ gridColumn: "1 / -1" }}>
+              <Field label="Alt text" value={agency.logo_meta?.alt_text} />
+            </div>
+          </div>
+        </div>
+
+        {/* Team photos */}
+        <div>
+          <div className="lb" style={{ marginBottom: 8 }}>
+            Foto team {agency.photos?.length ? `(${agency.photos.length})` : ""}
+          </div>
+          {agency.photos && agency.photos.length > 0 ? (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+              {agency.photos.map((p) => (
+                <a
+                  key={p.public_url}
+                  href={p.public_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: "block",
+                    background: "var(--bg3)",
+                    border: "1px solid var(--bd)",
+                    borderRadius: 6,
+                    overflow: "hidden",
+                    textDecoration: "none",
+                  }}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={p.public_url}
+                    alt={p.alt_text}
+                    style={{ width: "100%", height: 140, objectFit: "cover", display: "block" }}
+                  />
+                  <div style={{ padding: 8, fontSize: 11, color: "var(--fg3)" }}>
+                    <div style={{ fontFamily: "ui-monospace, monospace" }}>{p.file_name}</div>
+                    <div>
+                      {p.width && p.height ? `${p.width}×${p.height}` : "?×?"} · conf{" "}
+                      {(p.team_confidence * 100).toFixed(0)}%
+                    </div>
+                  </div>
+                </a>
+              ))}
+            </div>
+          ) : (
+            <div style={{ color: "var(--fg3)", fontSize: 13 }}>—</div>
+          )}
+        </div>
+
+        <div
+          style={{
+            marginTop: 14,
+            paddingTop: 12,
+            borderTop: "1px solid var(--bd)",
+            display: "grid",
+            gridTemplateColumns: "repeat(3, 1fr)",
+            gap: 12,
+          }}
+        >
+          <Field
+            label="Visual enrichment status"
+            value={
+              agency.visual_enrichment_status ? (
+                <span className={`bd-badge bd-${agency.visual_enrichment_status === "success" ? "success" : agency.visual_enrichment_status === "error" ? "error" : "warn"}`}>
+                  {agency.visual_enrichment_status}
+                </span>
+              ) : null
+            }
+          />
+          <Field
+            label="Ultima elaborazione visual"
+            value={
+              agency.visual_enriched_at
+                ? new Date(agency.visual_enriched_at).toLocaleString("it-IT")
+                : null
+            }
+          />
+        </div>
+      </div>
 
       <Section title="Google Places enrichment">
         <Field
