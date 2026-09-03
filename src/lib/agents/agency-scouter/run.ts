@@ -378,7 +378,10 @@ export async function runAgencyScouter(ctx: AgentContext): Promise<AgentResult> 
       slug: null, // il DB non ha default, ma è nullable
       publish_status: "draft",
       status_curatela: "proposta",
-      competenze: classification.primary_services.length > 0 ? classification.primary_services : null,
+      competenze_principali:
+        classification.primary_services.length > 0
+          ? classification.primary_services.slice(0, 5)
+          : null,
       citta: classification.location.city ? classification.location.city.toLowerCase() : null,
       note_curatore: `Scoutato da ${cand.source_type}: ${cand.source_url}${
         cand.discovery_keyword ? ` (keyword: ${cand.discovery_keyword})` : ""

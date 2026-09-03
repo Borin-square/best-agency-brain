@@ -49,12 +49,29 @@ function csvEscape(v: unknown): string {
   return s;
 }
 
+// WP conosce solo la colonna flat "Competenze": la ricomponiamo unendo i 3
+// gruppi in ordine di importanza (core → principali → altre), dedup preservando
+// l'ordine. Cap totale a 17 (2+5+10).
+function competenzeUnion(a: Record<string, unknown>): string[] {
+  const core = Array.isArray(a.competenze_core) ? (a.competenze_core as string[]) : [];
+  const pri = Array.isArray(a.competenze_principali) ? (a.competenze_principali as string[]) : [];
+  const alt = Array.isArray(a.altre_competenze) ? (a.altre_competenze as string[]) : [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const v of [...core, ...pri, ...alt]) {
+    if (!v || seen.has(v)) continue;
+    seen.add(v);
+    out.push(v);
+  }
+  return out;
+}
+
 function rowToCsv(a: Record<string, unknown>): string {
   const values = [
     a.wp_id,
     a.title,
     a.content,
-    a.competenze,
+    competenzeUnion(a),
     a.caratteristiche,
     a.aree,
     a.citta,

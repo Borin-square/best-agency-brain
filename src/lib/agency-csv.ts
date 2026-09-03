@@ -122,13 +122,22 @@ export function mapAgencyRow(row: Record<string, string>): Record<string, unknow
   const wpIdRaw = nnInt(row["ID"]);
   const slugBase = slugify(title) || `agency-${wpIdRaw ?? Date.now()}`;
 
+  // CSV WP ha una sola colonna "Competenze" (flat pipe-list). Splittiamo per
+  // rispettare i cap del DB: prime 5 → principali, successive 10 → altre.
+  // Nessuna finisce in "core" da import: la classificazione core è compito
+  // dell'agent updater (che vede tutto il sito).
+  const compRaw = pipeToArr(row["Competenze"]) ?? [];
+  const competenze_principali = compRaw.length > 0 ? compRaw.slice(0, 5) : null;
+  const altre_competenze = compRaw.length > 5 ? compRaw.slice(5, 15) : null;
+
   return {
     wp_id: wpIdRaw,
     slug: wpIdRaw ? `${slugBase}-${wpIdRaw}` : slugBase,
 
     title,
     content: nn(row["Content"]),
-    competenze: pipeToArr(row["Competenze"]),
+    competenze_principali,
+    altre_competenze,
     caratteristiche: pipeToArr(row["Caratteristiche"]),
     aree: nn(row["Aree"]),
     citta: nn(row["Città"]),

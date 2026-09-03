@@ -6,11 +6,14 @@
 
 import OpenAI from "openai";
 import type { ScrapedSite } from "./website-scrape";
+import type { AgencySkill } from "@/lib/agency-skills";
 
 export interface LlmExtraction {
   descrizione_breve: string | null;
   content: string | null;
-  competenze: string[] | null;
+  competenze_core: string[] | null;
+  competenze_principali: string[] | null;
+  altre_competenze: string[] | null;
   caratteristiche: string[] | null;
   anno_di_fondazione: number | null;
   dimensione_team: string | null;
@@ -47,10 +50,23 @@ const EXTRACTION_SCHEMA = {
         description:
           "Descrizione lunga in italiano ben strutturata (600-1200 caratteri, 3-5 paragrafi separati da doppio a-capo). Struttura: (1) chi sono e cosa fanno in 1 frase, (2) servizi/aree di competenza principali, (3) target clienti tipico + settori, (4) elemento distintivo/approccio. Tono professionale, no marketing gonfiato. Basato solo su ciò che è verificabile dal testo — se un blocco non è ricavabile, saltalo.",
       },
-      competenze: {
+      competenze_core: {
         type: ["array", "null"],
         items: { type: "string" },
-        description: "Servizi/aree competenza in lowercase (es. 'seo', 'meta ads').",
+        description:
+          "Max 2 competenze CORE: il/i servizio/i attorno cui gira l'intera agenzia (identità principale). Usa solo label dalla lista permessa fornita nel prompt.",
+      },
+      competenze_principali: {
+        type: ["array", "null"],
+        items: { type: "string" },
+        description:
+          "Max 5 competenze PRINCIPALI: servizi che l'agenzia offre attivamente e su cui è forte (oltre le core). Usa solo label dalla lista permessa.",
+      },
+      altre_competenze: {
+        type: ["array", "null"],
+        items: { type: "string" },
+        description:
+          "Max 10 competenze ALTRE: servizi complementari o secondari citati nel sito. Usa solo label dalla lista permessa.",
       },
       caratteristiche: {
         type: ["array", "null"],
@@ -98,7 +114,9 @@ const EXTRACTION_SCHEMA = {
     required: [
       "descrizione_breve",
       "content",
-      "competenze",
+      "competenze_core",
+      "competenze_principali",
+      "altre_competenze",
       "caratteristiche",
       "anno_di_fondazione",
       "dimensione_team",
@@ -116,15 +134,33 @@ const EXTRACTION_SCHEMA = {
   },
 } as const;
 
-function buildPrompt(scraped: ScrapedSite, agencyName: string): string {
-  return `Analizza il testo del sito ufficiale di questa agenzia italiana ed estrai i campi richiesti.
+function buildPrompt(
+  scraped: ScrapedSite,
+  agencyName: string,
+  allowedSkills: AgencySkill[],
+): string {
+  const allowList = allowedSkills.length
+    ? allowedSkills.map((s) => `- ${s.label} (slug: ${s.slug})`).join("\n")
+    : "(nessuna competenza configurata per questo dominio)";
+
+  return `Analizza il testo del sito ufficiale di questa agenzia ed estrai i campi richiesti.
 
 REGOLE FERREE per i dati fattuali:
 - Ritorna null per qualsiasi campo NON chiaramente evidente. Non inventare mai.
 - anno_di_fondazione: accetta solo se citato ("fondata nel 2015", "since 2010", "dal 2020").
 - partita_iva: solo 11 cifre italiane. Ignora codici fiscali (16 char) e numeri REA.
 - URL social: URL completo (https://linkedin.com/company/...).
-- competenze/caratteristiche: max 12 elementi, lowercase, no duplicati.
+- caratteristiche: max 12 elementi, lowercase, no duplicati.
+
+REGOLE per le competenze (tre gruppi obbligatoriamente disgiunti):
+- USA ESCLUSIVAMENTE label prese da questa LISTA PERMESSA. Se un servizio dell'agenzia non è nella lista, IGNORALO (non inventare voci nuove).
+- competenze_core: max 2 — il servizio attorno al quale gira TUTTA l'attività dell'agenzia (identità principale, ciò che viene per primo nell'headline / meta title / homepage hero). Se non è chiaramente identificabile, ritorna null o [].
+- competenze_principali: max 5 — servizi offerti attivamente, con pagina o sezione dedicata sul sito. NON includere qui le voci già in competenze_core.
+- altre_competenze: max 10 — servizi complementari o citati marginalmente. NON includere qui voci già in core o principali.
+- Nessun duplicato tra i tre gruppi. Usa la label ESATTA della lista (rispetta maiuscole/minuscole).
+
+LISTA PERMESSA (usa solo queste, non inventare):
+${allowList}
 
 REGOLE per le descrizioni (descrizione_breve + content):
 - Scrivi in italiano professionale e diretto, per un cliente che deve capire in 10 secondi se contattare l'agenzia.
@@ -145,6 +181,7 @@ ${scraped.text}
 export async function extractFromWebsite(
   scraped: ScrapedSite,
   agencyName: string,
+  allowedSkills: AgencySkill[],
 ): Promise<LlmExtraction | null> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return null;
@@ -157,9 +194,9 @@ export async function extractFromWebsite(
       {
         role: "system",
         content:
-          "Sei un data extractor rigoroso. Rispondi solo con dati verificabili dal testo. Null è meglio di un'invenzione.",
+          "Sei un data extractor rigoroso. Rispondi solo con dati verificabili dal testo. Null è meglio di un'invenzione. Per le competenze usa esclusivamente label dalla lista permessa nel prompt.",
       },
-      { role: "user", content: buildPrompt(scraped, agencyName) },
+      { role: "user", content: buildPrompt(scraped, agencyName, allowedSkills) },
     ],
     response_format: {
       type: "json_schema",
@@ -178,19 +215,21 @@ export async function extractFromWebsite(
     return null;
   }
 
+  const arr = (v: unknown): string[] | null =>
+    Array.isArray(v) && v.length > 0 ? (v as string[]) : null;
+
   return {
     descrizione_breve: parsed.descrizione_breve ?? null,
     content: parsed.content ?? null,
-    competenze: Array.isArray(parsed.competenze) && parsed.competenze.length > 0 ? parsed.competenze : null,
-    caratteristiche:
-      Array.isArray(parsed.caratteristiche) && parsed.caratteristiche.length > 0
-        ? parsed.caratteristiche
-        : null,
+    competenze_core: arr(parsed.competenze_core),
+    competenze_principali: arr(parsed.competenze_principali),
+    altre_competenze: arr(parsed.altre_competenze),
+    caratteristiche: arr(parsed.caratteristiche),
     anno_di_fondazione:
       typeof parsed.anno_di_fondazione === "number" ? parsed.anno_di_fondazione : null,
     dimensione_team: parsed.dimensione_team ?? null,
     partita_iva: parsed.partita_iva ?? null,
-    lingue: Array.isArray(parsed.lingue) && parsed.lingue.length > 0 ? parsed.lingue : null,
+    lingue: arr(parsed.lingue),
     fascia_di_prezzo: parsed.fascia_di_prezzo ?? null,
     email: parsed.email ?? null,
     telefono: parsed.telefono ?? null,

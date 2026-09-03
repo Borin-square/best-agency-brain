@@ -41,7 +41,9 @@ export interface ScorableAgency {
   email?: string | null;
   telefono?: string | null;
   google_telefono?: string | null;
-  competenze?: string[] | null;
+  competenze_core?: string[] | null;
+  competenze_principali?: string[] | null;
+  altre_competenze?: string[] | null;
   portfolio?: unknown; // jsonb array
   case_studies?: unknown; // jsonb array
   dimensione_team?: string | null;
@@ -74,7 +76,8 @@ const CHECKS: Record<ScoreField, (a: ScorableAgency) => boolean> = {
   website_active: (a) => isValidHttpUrl(a.sito_web),
   contact_email: (a) => nonEmptyStr(a.email),
   contact_phone: (a) => nonEmptyStr(a.telefono) || nonEmptyStr(a.google_telefono),
-  services_selected: (a) => arrLen(a.competenze) > 0,
+  services_selected: (a) =>
+    arrLen(a.competenze_core) + arrLen(a.competenze_principali) + arrLen(a.altre_competenze) > 0,
   portfolio_min_3: (a) => arrLen(a.portfolio) >= 3,
   case_studies: (a) => arrLen(a.case_studies) > 0,
   team_members: (a) => nonEmptyStr(a.dimensione_team) || (a.anno_di_fondazione ?? 0) > 0,

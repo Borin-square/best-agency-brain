@@ -10,7 +10,9 @@ interface Agency {
   slug: string | null;
   title: string;
   content: string | null;
-  competenze: string[] | null;
+  competenze_core: string[] | null;
+  competenze_principali: string[] | null;
+  altre_competenze: string[] | null;
   caratteristiche: string[] | null;
   aree: string | null;
   citta: string | null;
@@ -316,7 +318,15 @@ export default function AgencyDetailPage({ params }: { params: Promise<{ id: str
         <div style={{ gridColumn: "1 / -1" }}>
           <Field label="Descrizione breve" value={agency.descrizione_breve} />
         </div>
-        <Field label="Competenze" value={arr(agency.competenze)} />
+        <div style={{ gridColumn: "1 / -1" }}>
+          <Field label="Competenze core (max 2)" value={arr(agency.competenze_core)} />
+        </div>
+        <div style={{ gridColumn: "1 / -1" }}>
+          <Field label="Competenze principali (max 5)" value={arr(agency.competenze_principali)} />
+        </div>
+        <div style={{ gridColumn: "1 / -1" }}>
+          <Field label="Altre competenze (max 10)" value={arr(agency.altre_competenze)} />
+        </div>
         <Field label="Caratteristiche" value={arr(agency.caratteristiche)} />
         <Field label="Aree" value={agency.aree} />
       </Section>

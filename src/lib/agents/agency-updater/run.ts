@@ -3,6 +3,7 @@ import { findPlace, type PlacesResult } from "./sources/google-places";
 import { scrapeWebsite, type ScrapeResult } from "./sources/website-scrape";
 import { extractFromWebsite, type LlmExtraction } from "./sources/llm-extract";
 import { resolveItalianAddress } from "./sources/geo-resolver";
+import { fetchAllowedSkills, filterAndCap, type AgencySkill } from "@/lib/agency-skills";
 
 const BATCH_SIZE = 15; // scrape + LLM per agenzia ~10s → 15 × 10s = 150s < 300s (Hobby limit)
 const MAX_MANUAL_IDS = 30; // limite hard su selezione manuale per non sforare timeout
@@ -15,7 +16,9 @@ const ACTIVE_DOMAIN_STATUSES = ["online", "fase_1", "fase_2", "fase_3"] as const
 // che vengono SEMPRE sovrascritti quando disponibili — obiettivo: descrizioni
 // di qualità uniforme scritte dall'LLM sulla base del sito.
 const LLM_FILL_IF_EMPTY = [
-  "competenze",
+  "competenze_core",
+  "competenze_principali",
+  "altre_competenze",
   "caratteristiche",
   "anno_di_fondazione",
   "dimensione_team",
@@ -46,7 +49,9 @@ interface AgencyRow {
   last_enriched_at: string | null;
   descrizione_breve: string | null;
   content: string | null;
-  competenze: string[] | null;
+  competenze_core: string[] | null;
+  competenze_principali: string[] | null;
+  altre_competenze: string[] | null;
   caratteristiche: string[] | null;
   anno_di_fondazione: number | null;
   dimensione_team: string | null;
@@ -58,6 +63,7 @@ interface AgencyRow {
   instagram: string | null;
   behance: string | null;
   indirizzo_completo: string | null;
+  domain_id: string;
 }
 
 function isEmpty(v: unknown): boolean {
@@ -68,7 +74,7 @@ function isEmpty(v: unknown): boolean {
 }
 
 const AGENCY_SELECT =
-  "id, wp_id, title, citta, sito_web, partita_iva, google_place_id, google_sito, last_enriched_at, descrizione_breve, content, competenze, caratteristiche, anno_di_fondazione, dimensione_team, lingue, fascia_di_prezzo, email, telefono, linkedin, instagram, behance, indirizzo_completo";
+  "id, wp_id, title, citta, sito_web, partita_iva, google_place_id, google_sito, last_enriched_at, descrizione_breve, content, competenze_core, competenze_principali, altre_competenze, caratteristiche, anno_di_fondazione, dimensione_team, lingue, fascia_di_prezzo, email, telefono, linkedin, instagram, behance, indirizzo_completo, domain_id";
 
 async function pickAgencies(ctx: AgentContext): Promise<AgencyRow[] | null> {
   const { agencyIds, domainId } = ctx.filters;
@@ -139,6 +145,31 @@ async function pickAgencies(ctx: AgentContext): Promise<AgencyRow[] | null> {
   return data ?? [];
 }
 
+// Filtra i 3 array LLM verso l'allowlist, evitando duplicati tra gruppi.
+// Ordine di priorità: core → principali → altre.
+function classifyCompetenze(
+  llm: LlmExtraction,
+  allowed: AgencySkill[],
+): { core: string[]; principali: string[]; altre: string[] } {
+  const core = filterAndCap(llm.competenze_core, allowed, 2);
+  const usedCore = new Set(core);
+  const principali = filterAndCap(
+    (llm.competenze_principali ?? []).filter((v) => {
+      const s = v.toLowerCase().trim();
+      return !usedCore.has(s);
+    }),
+    allowed,
+    5,
+  ).filter((s) => !usedCore.has(s));
+  const usedTop = new Set([...core, ...principali]);
+  const altre = filterAndCap(
+    (llm.altre_competenze ?? []).filter((v) => !usedTop.has(v.toLowerCase().trim())),
+    allowed,
+    10,
+  ).filter((s) => !usedTop.has(s));
+  return { core, principali, altre };
+}
+
 export async function runAgencyUpdater(ctx: AgentContext): Promise<AgentResult> {
   ctx.log("start", {
     batchSize: BATCH_SIZE,
@@ -156,6 +187,16 @@ export async function runAgencyUpdater(ctx: AgentContext): Promise<AgentResult> 
   }
 
   ctx.log("batch_selected", { count: agencies.length });
+
+  // Cache skill per dominio (una fetch per dominio distinto nel batch)
+  const skillsCache = new Map<string, AgencySkill[]>();
+  const getSkills = async (domainId: string): Promise<AgencySkill[]> => {
+    const cached = skillsCache.get(domainId);
+    if (cached) return cached;
+    const skills = await fetchAllowedSkills(ctx.supabase, domainId);
+    skillsCache.set(domainId, skills);
+    return skills;
+  };
 
   let success = 0;
   let errorCount = 0;
@@ -207,9 +248,11 @@ export async function runAgencyUpdater(ctx: AgentContext): Promise<AgentResult> 
     }
 
     // ---- LLM extraction (OpenAI) ----
+    let allowedSkills: AgencySkill[] = [];
     if (scrapeData) {
       try {
-        llmData = await extractFromWebsite(scrapeData, agency.title);
+        allowedSkills = await getSkills(agency.domain_id);
+        llmData = await extractFromWebsite(scrapeData, agency.title, allowedSkills);
         llmStatus = llmData ? 200 : 404;
         if (llmData) llmHits++;
       } catch (err) {
@@ -253,11 +296,22 @@ export async function runAgencyUpdater(ctx: AgentContext): Promise<AgentResult> 
       updated.push("match_confidence");
     }
 
+    // Normalizza le competenze LLM verso l'allowlist per dominio (strict).
+    // Solo slug presenti in agency_skills(domain_id) sopravvivono. Nessun duplicato tra gruppi.
+    let classified: { core: string[]; principali: string[]; altre: string[] } | null = null;
+    if (llmData) {
+      classified = classifyCompetenze(llmData, allowedSkills);
+    }
+
     // L'LLM riempie i campi vuoti (rispetta curatela manuale) …
     if (llmData) {
       for (const field of LLM_FILL_IF_EMPTY) {
         const currentValue = agency[field as LlmFillField];
-        const newValue = llmData[field];
+        let newValue: unknown;
+        if (field === "competenze_core") newValue = classified?.core ?? null;
+        else if (field === "competenze_principali") newValue = classified?.principali ?? null;
+        else if (field === "altre_competenze") newValue = classified?.altre ?? null;
+        else newValue = llmData[field as keyof LlmExtraction];
         if (isEmpty(currentValue) && !isEmpty(newValue)) {
           updateFields[field] = newValue;
           updated.push(field);
