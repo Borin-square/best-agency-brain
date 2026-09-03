@@ -16,9 +16,6 @@ const ACTIVE_DOMAIN_STATUSES = ["online", "fase_1", "fase_2", "fase_3"] as const
 // che vengono SEMPRE sovrascritti quando disponibili — obiettivo: descrizioni
 // di qualità uniforme scritte dall'LLM sulla base del sito.
 const LLM_FILL_IF_EMPTY = [
-  "competenze_core",
-  "competenze_principali",
-  "altre_competenze",
   "caratteristiche",
   "anno_di_fondazione",
   "dimensione_team",
@@ -307,11 +304,7 @@ export async function runAgencyUpdater(ctx: AgentContext): Promise<AgentResult> 
     if (llmData) {
       for (const field of LLM_FILL_IF_EMPTY) {
         const currentValue = agency[field as LlmFillField];
-        let newValue: unknown;
-        if (field === "competenze_core") newValue = classified?.core ?? null;
-        else if (field === "competenze_principali") newValue = classified?.principali ?? null;
-        else if (field === "altre_competenze") newValue = classified?.altre ?? null;
-        else newValue = llmData[field as keyof LlmExtraction];
+        const newValue = llmData[field as keyof LlmExtraction];
         if (isEmpty(currentValue) && !isEmpty(newValue)) {
           updateFields[field] = newValue;
           updated.push(field);
@@ -325,6 +318,42 @@ export async function runAgencyUpdater(ctx: AgentContext): Promise<AgentResult> 
           updateFields[field] = newValue;
           updated.push(field);
         }
+      }
+    }
+
+    // Competenze: riconciliazione atomica sui 3 gruppi.
+    // Per ogni gruppo: usa il valore corrente se non vuoto (rispetta curatela),
+    // altrimenti quello classificato dall'LLM. Poi dedup cross-gruppo con
+    // priorità core → principali → altre così una voce non appare in più gruppi
+    // (bug: le competenze legacy migrate in "principali" duplicavano quelle
+    // che l'LLM classificava in "core"). Scrive solo i gruppi cambiati.
+    if (classified) {
+      const currCore = agency.competenze_core ?? [];
+      const currPri = agency.competenze_principali ?? [];
+      const currAlt = agency.altre_competenze ?? [];
+
+      const finalCore = currCore.length > 0 ? currCore : classified.core;
+      let finalPri = currPri.length > 0 ? currPri : classified.principali;
+      let finalAlt = currAlt.length > 0 ? currAlt : classified.altre;
+
+      const coreSet = new Set(finalCore);
+      finalPri = finalPri.filter((s) => !coreSet.has(s));
+      const topSet = new Set([...finalCore, ...finalPri]);
+      finalAlt = finalAlt.filter((s) => !topSet.has(s));
+
+      const eq = (a: string[], b: string[]) =>
+        a.length === b.length && a.every((v, i) => v === b[i]);
+      if (!eq(finalCore, currCore)) {
+        updateFields.competenze_core = finalCore;
+        updated.push("competenze_core");
+      }
+      if (!eq(finalPri, currPri)) {
+        updateFields.competenze_principali = finalPri;
+        updated.push("competenze_principali");
+      }
+      if (!eq(finalAlt, currAlt)) {
+        updateFields.altre_competenze = finalAlt;
+        updated.push("altre_competenze");
       }
     }
 
