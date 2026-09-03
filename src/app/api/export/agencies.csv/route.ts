@@ -45,6 +45,7 @@ const CSV_HEADERS = [
   "Title originale",
   "Status pubblicazione",
   "Note curatore",
+  "Stato",
 ] as const;
 
 function csvEscape(v: unknown): string {
@@ -52,6 +53,14 @@ function csvEscape(v: unknown): string {
   const s = Array.isArray(v) ? v.join("|") : String(v);
   if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
   return s;
+}
+
+// Stato agenzia: verificata > arricchita > vuoto
+function computeStato(a: Record<string, unknown>): "verificata" | "arricchita" | "vuoto" {
+  if (a.verifica === "verified" || a.status_curatela === "verificata") return "verificata";
+  const enr = a.enrichment_status;
+  if (enr === "success" || enr === "partial" || a.last_enriched_at) return "arricchita";
+  return "vuoto";
 }
 
 // WP conosce solo la colonna flat "Competenze": la ricomponiamo unendo i 3
@@ -113,6 +122,7 @@ function rowToCsv(a: Record<string, unknown>): string {
     a.title_originale,
     a.publish_status,
     a.note_curatore,
+    computeStato(a),
   ];
   return values.map(csvEscape).join(",");
 }
