@@ -49,6 +49,26 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     patch.notes = typeof body.notes === "string" && body.notes.trim() ? body.notes.trim() : null;
   if ("launch_date" in body)
     patch.launch_date = typeof body.launch_date === "string" && body.launch_date ? body.launch_date : null;
+  if ("starred_areas" in body) {
+    // Formato accettato: [{ type: 'regione'|'citta', slug: string }]
+    const raw = Array.isArray(body.starred_areas) ? body.starred_areas : [];
+    const seen = new Set<string>();
+    const clean: Array<{ type: "regione" | "citta"; slug: string }> = [];
+    for (const item of raw) {
+      const o = item as { type?: unknown; slug?: unknown };
+      if (
+        (o.type === "regione" || o.type === "citta") &&
+        typeof o.slug === "string" &&
+        o.slug.trim()
+      ) {
+        const key = `${o.type}:${o.slug.trim().toLowerCase()}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        clean.push({ type: o.type, slug: o.slug.trim().toLowerCase() });
+      }
+    }
+    patch.starred_areas = clean;
+  }
 
   if (Object.keys(patch).length === 0) {
     return NextResponse.json({ error: "no_fields" }, { status: 400 });
