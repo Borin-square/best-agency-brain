@@ -321,38 +321,26 @@ export async function runAgencyUpdater(ctx: AgentContext): Promise<AgentResult> 
       }
     }
 
-    // Competenze: riconciliazione atomica sui 3 gruppi.
-    // Per ogni gruppo: usa il valore corrente se non vuoto (rispetta curatela),
-    // altrimenti quello classificato dall'LLM. Poi dedup cross-gruppo con
-    // priorità core → principali → altre così una voce non appare in più gruppi
-    // (bug: le competenze legacy migrate in "principali" duplicavano quelle
-    // che l'LLM classificava in "core"). Scrive solo i gruppi cambiati.
+    // Competenze: l'agent è authority. Quando l'LLM produce una classificazione
+    // (già deduplicata cross-gruppo da classifyCompetenze), sovrascrive sempre
+    // tutti e 3 i gruppi. La curatela manuale verrà protetta in futuro dal
+    // flag verifica='verified' (out of scope qui).
     if (classified) {
       const currCore = agency.competenze_core ?? [];
       const currPri = agency.competenze_principali ?? [];
       const currAlt = agency.altre_competenze ?? [];
-
-      const finalCore = currCore.length > 0 ? currCore : classified.core;
-      let finalPri = currPri.length > 0 ? currPri : classified.principali;
-      let finalAlt = currAlt.length > 0 ? currAlt : classified.altre;
-
-      const coreSet = new Set(finalCore);
-      finalPri = finalPri.filter((s) => !coreSet.has(s));
-      const topSet = new Set([...finalCore, ...finalPri]);
-      finalAlt = finalAlt.filter((s) => !topSet.has(s));
-
       const eq = (a: string[], b: string[]) =>
         a.length === b.length && a.every((v, i) => v === b[i]);
-      if (!eq(finalCore, currCore)) {
-        updateFields.competenze_core = finalCore;
+      if (!eq(classified.core, currCore)) {
+        updateFields.competenze_core = classified.core;
         updated.push("competenze_core");
       }
-      if (!eq(finalPri, currPri)) {
-        updateFields.competenze_principali = finalPri;
+      if (!eq(classified.principali, currPri)) {
+        updateFields.competenze_principali = classified.principali;
         updated.push("competenze_principali");
       }
-      if (!eq(finalAlt, currAlt)) {
-        updateFields.altre_competenze = finalAlt;
+      if (!eq(classified.altre, currAlt)) {
+        updateFields.altre_competenze = classified.altre;
         updated.push("altre_competenze");
       }
     }
