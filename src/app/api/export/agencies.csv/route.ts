@@ -1,12 +1,17 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase-server";
 
-// Ordine ESATTO delle colonne come da template WP All Import (37 colonne).
+// Ordine delle colonne come da template WP All Import + 3 nuove per la
+// classificazione competenze (core/principali/altre). "Competenze" resta come
+// union flat per retrocompat WP.
 const CSV_HEADERS = [
   "ID",
   "Title",
   "Content",
   "Competenze",
+  "Competenze core",
+  "Competenze principali",
+  "Altre competenze",
   "Caratteristiche",
   "Aree",
   "Città",
@@ -72,6 +77,9 @@ function rowToCsv(a: Record<string, unknown>): string {
     a.title,
     a.content,
     competenzeUnion(a),
+    a.competenze_core,
+    a.competenze_principali,
+    a.altre_competenze,
     a.caratteristiche,
     a.aree,
     a.citta,

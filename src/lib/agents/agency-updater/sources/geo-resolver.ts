@@ -1,45 +1,135 @@
 // Resolver geografico italiano.
-// Input: Google formattedAddress → output: città + regione (display + slug) + area.
-// Mappa statica sigle provincia → regione (110 province IT + soppresse).
+// Input: Google formattedAddress → output: provincia + regione (display + slug) + area.
+// Mappa statica 110 sigle provincia → { nome provincia, regione }.
+// NB: il campo "citta" nel DB viene popolato con il NOME DELLA PROVINCIA
+// (non del comune) — l'utente vuole aggregare per provincia per evitare
+// dispersione su migliaia di paesini nella matrice/filtri.
 
-const PROVINCE_TO_REGION: Record<string, string> = {
-  AG: "Sicilia", AL: "Piemonte", AN: "Marche", AO: "Valle d'Aosta",
-  AR: "Toscana", AP: "Marche", AT: "Piemonte", AV: "Campania",
-  BA: "Puglia", BT: "Puglia", BL: "Veneto", BN: "Campania",
-  BG: "Lombardia", BI: "Piemonte", BO: "Emilia-Romagna", BZ: "Trentino-Alto Adige",
-  BS: "Lombardia", BR: "Puglia", CA: "Sardegna", CL: "Sicilia",
-  CB: "Molise", CI: "Sardegna", CE: "Campania", CT: "Sicilia",
-  CZ: "Calabria", CH: "Abruzzo", CO: "Lombardia", CS: "Calabria",
-  CR: "Lombardia", KR: "Calabria", CN: "Piemonte", EN: "Sicilia",
-  FM: "Marche", FE: "Emilia-Romagna", FI: "Toscana", FG: "Puglia",
-  FC: "Emilia-Romagna", FR: "Lazio", GE: "Liguria", GO: "Friuli-Venezia Giulia",
-  GR: "Toscana", IM: "Liguria", IS: "Molise", SP: "Liguria",
-  AQ: "Abruzzo", LT: "Lazio", LE: "Puglia", LC: "Lombardia",
-  LI: "Toscana", LO: "Lombardia", LU: "Toscana", MC: "Marche",
-  MN: "Lombardia", MS: "Toscana", MT: "Basilicata", ME: "Sicilia",
-  MI: "Lombardia", MO: "Emilia-Romagna", MB: "Lombardia", NA: "Campania",
-  NO: "Piemonte", NU: "Sardegna", OG: "Sardegna", OT: "Sardegna",
-  OR: "Sardegna", PD: "Veneto", PA: "Sicilia", PR: "Emilia-Romagna",
-  PV: "Lombardia", PG: "Umbria", PU: "Marche", PE: "Abruzzo",
-  PC: "Emilia-Romagna", PI: "Toscana", PT: "Toscana", PN: "Friuli-Venezia Giulia",
-  PZ: "Basilicata", PO: "Toscana", RG: "Sicilia", RA: "Emilia-Romagna",
-  RC: "Calabria", RE: "Emilia-Romagna", RI: "Lazio", RN: "Emilia-Romagna",
-  RM: "Lazio", RO: "Veneto", SA: "Campania", SS: "Sardegna",
-  SV: "Liguria", SI: "Toscana", SR: "Sicilia", SO: "Lombardia",
-  SU: "Sardegna", TA: "Puglia", TE: "Abruzzo", TR: "Umbria",
-  TO: "Piemonte", TP: "Sicilia", TN: "Trentino-Alto Adige", TV: "Veneto",
-  TS: "Friuli-Venezia Giulia", UD: "Friuli-Venezia Giulia", VA: "Lombardia",
-  VE: "Veneto", VB: "Piemonte", VC: "Piemonte", VR: "Veneto",
-  VV: "Calabria", VI: "Veneto", VT: "Lazio",
+interface ProvinceInfo {
+  name: string;
+  region: string;
+}
+
+const PROVINCES: Record<string, ProvinceInfo> = {
+  AG: { name: "Agrigento",           region: "Sicilia" },
+  AL: { name: "Alessandria",         region: "Piemonte" },
+  AN: { name: "Ancona",              region: "Marche" },
+  AO: { name: "Aosta",               region: "Valle d'Aosta" },
+  AR: { name: "Arezzo",              region: "Toscana" },
+  AP: { name: "Ascoli Piceno",       region: "Marche" },
+  AT: { name: "Asti",                region: "Piemonte" },
+  AV: { name: "Avellino",            region: "Campania" },
+  BA: { name: "Bari",                region: "Puglia" },
+  BT: { name: "Barletta-Andria-Trani", region: "Puglia" },
+  BL: { name: "Belluno",             region: "Veneto" },
+  BN: { name: "Benevento",           region: "Campania" },
+  BG: { name: "Bergamo",             region: "Lombardia" },
+  BI: { name: "Biella",              region: "Piemonte" },
+  BO: { name: "Bologna",             region: "Emilia-Romagna" },
+  BZ: { name: "Bolzano",             region: "Trentino-Alto Adige" },
+  BS: { name: "Brescia",             region: "Lombardia" },
+  BR: { name: "Brindisi",            region: "Puglia" },
+  CA: { name: "Cagliari",            region: "Sardegna" },
+  CL: { name: "Caltanissetta",       region: "Sicilia" },
+  CB: { name: "Campobasso",          region: "Molise" },
+  CI: { name: "Sud Sardegna",        region: "Sardegna" }, // ex Carbonia-Iglesias, soppressa 2016 → SU
+  CE: { name: "Caserta",             region: "Campania" },
+  CT: { name: "Catania",             region: "Sicilia" },
+  CZ: { name: "Catanzaro",           region: "Calabria" },
+  CH: { name: "Chieti",              region: "Abruzzo" },
+  CO: { name: "Como",                region: "Lombardia" },
+  CS: { name: "Cosenza",             region: "Calabria" },
+  CR: { name: "Cremona",             region: "Lombardia" },
+  KR: { name: "Crotone",             region: "Calabria" },
+  CN: { name: "Cuneo",               region: "Piemonte" },
+  EN: { name: "Enna",                region: "Sicilia" },
+  FM: { name: "Fermo",               region: "Marche" },
+  FE: { name: "Ferrara",             region: "Emilia-Romagna" },
+  FI: { name: "Firenze",             region: "Toscana" },
+  FG: { name: "Foggia",              region: "Puglia" },
+  FC: { name: "Forlì-Cesena",        region: "Emilia-Romagna" },
+  FR: { name: "Frosinone",           region: "Lazio" },
+  GE: { name: "Genova",              region: "Liguria" },
+  GO: { name: "Gorizia",             region: "Friuli-Venezia Giulia" },
+  GR: { name: "Grosseto",            region: "Toscana" },
+  IM: { name: "Imperia",             region: "Liguria" },
+  IS: { name: "Isernia",             region: "Molise" },
+  SP: { name: "La Spezia",           region: "Liguria" },
+  AQ: { name: "L'Aquila",            region: "Abruzzo" },
+  LT: { name: "Latina",              region: "Lazio" },
+  LE: { name: "Lecce",               region: "Puglia" },
+  LC: { name: "Lecco",               region: "Lombardia" },
+  LI: { name: "Livorno",             region: "Toscana" },
+  LO: { name: "Lodi",                region: "Lombardia" },
+  LU: { name: "Lucca",               region: "Toscana" },
+  MC: { name: "Macerata",            region: "Marche" },
+  MN: { name: "Mantova",             region: "Lombardia" },
+  MS: { name: "Massa-Carrara",       region: "Toscana" },
+  MT: { name: "Matera",              region: "Basilicata" },
+  ME: { name: "Messina",             region: "Sicilia" },
+  MI: { name: "Milano",              region: "Lombardia" },
+  MO: { name: "Modena",              region: "Emilia-Romagna" },
+  MB: { name: "Monza e Brianza",     region: "Lombardia" },
+  NA: { name: "Napoli",              region: "Campania" },
+  NO: { name: "Novara",              region: "Piemonte" },
+  NU: { name: "Nuoro",               region: "Sardegna" },
+  OG: { name: "Nuoro",               region: "Sardegna" }, // ex Ogliastra, soppressa 2016 → NU
+  OT: { name: "Sassari",             region: "Sardegna" }, // ex Olbia-Tempio, soppressa 2016 → SS
+  OR: { name: "Oristano",            region: "Sardegna" },
+  PD: { name: "Padova",              region: "Veneto" },
+  PA: { name: "Palermo",             region: "Sicilia" },
+  PR: { name: "Parma",               region: "Emilia-Romagna" },
+  PV: { name: "Pavia",               region: "Lombardia" },
+  PG: { name: "Perugia",             region: "Umbria" },
+  PU: { name: "Pesaro e Urbino",     region: "Marche" },
+  PE: { name: "Pescara",             region: "Abruzzo" },
+  PC: { name: "Piacenza",            region: "Emilia-Romagna" },
+  PI: { name: "Pisa",                region: "Toscana" },
+  PT: { name: "Pistoia",             region: "Toscana" },
+  PN: { name: "Pordenone",           region: "Friuli-Venezia Giulia" },
+  PZ: { name: "Potenza",             region: "Basilicata" },
+  PO: { name: "Prato",               region: "Toscana" },
+  RG: { name: "Ragusa",              region: "Sicilia" },
+  RA: { name: "Ravenna",             region: "Emilia-Romagna" },
+  RC: { name: "Reggio Calabria",     region: "Calabria" },
+  RE: { name: "Reggio Emilia",       region: "Emilia-Romagna" },
+  RI: { name: "Rieti",               region: "Lazio" },
+  RN: { name: "Rimini",              region: "Emilia-Romagna" },
+  RM: { name: "Roma",                region: "Lazio" },
+  RO: { name: "Rovigo",              region: "Veneto" },
+  SA: { name: "Salerno",             region: "Campania" },
+  SS: { name: "Sassari",             region: "Sardegna" },
+  SV: { name: "Savona",              region: "Liguria" },
+  SI: { name: "Siena",               region: "Toscana" },
+  SR: { name: "Siracusa",            region: "Sicilia" },
+  SO: { name: "Sondrio",             region: "Lombardia" },
+  SU: { name: "Sud Sardegna",        region: "Sardegna" },
+  TA: { name: "Taranto",             region: "Puglia" },
+  TE: { name: "Teramo",              region: "Abruzzo" },
+  TR: { name: "Terni",               region: "Umbria" },
+  TO: { name: "Torino",              region: "Piemonte" },
+  TP: { name: "Trapani",             region: "Sicilia" },
+  TN: { name: "Trento",              region: "Trentino-Alto Adige" },
+  TV: { name: "Treviso",             region: "Veneto" },
+  TS: { name: "Trieste",             region: "Friuli-Venezia Giulia" },
+  UD: { name: "Udine",               region: "Friuli-Venezia Giulia" },
+  VA: { name: "Varese",              region: "Lombardia" },
+  VE: { name: "Venezia",             region: "Veneto" },
+  VB: { name: "Verbano-Cusio-Ossola", region: "Piemonte" },
+  VC: { name: "Vercelli",            region: "Piemonte" },
+  VR: { name: "Verona",              region: "Veneto" },
+  VV: { name: "Vibo Valentia",       region: "Calabria" },
+  VI: { name: "Vicenza",             region: "Veneto" },
+  VT: { name: "Viterbo",             region: "Lazio" },
 };
 
 export interface GeoResolved {
-  city_display: string;
-  region_display: string;
-  province_code: string;
-  citta_slug: string;
-  regioni_slug: string;
-  aree: string;              // "Regione>Città"
+  province_display: string;   // "Ancona"
+  region_display: string;     // "Marche"
+  province_code: string;      // "AN"
+  citta_slug: string;         // "ancona"  (era il comune, ora è la provincia)
+  regioni_slug: string;       // "marche"
+  aree: string;               // "Marche>Ancona"
 }
 
 function slugify(s: string): string {
@@ -66,15 +156,11 @@ const ADDRESS_RE = /(\d{5})\s+([^,]+?)\s+([A-Z]{2})(?=\s*(?:,|$|\s+(?:Italia|Ita
 // Fallback: <città> <PROV> senza CAP (raro), es. "Milano MI, Italia"
 const ADDRESS_RE_NO_CAP = /(?:^|,\s*)([A-Za-zÀ-ÿ'\s]+?)\s+([A-Z]{2})\s*,?\s*(?:Italia|Italy|IT)\s*$/i;
 
-function tryMatch(cleaned: string): { city: string; prov: string } | null {
+function tryMatch(cleaned: string): { prov: string } | null {
   const withCap = cleaned.match(ADDRESS_RE);
-  if (withCap) {
-    return { city: withCap[2].trim(), prov: withCap[3].toUpperCase() };
-  }
+  if (withCap) return { prov: withCap[3].toUpperCase() };
   const noCap = cleaned.match(ADDRESS_RE_NO_CAP);
-  if (noCap) {
-    return { city: noCap[1].trim(), prov: noCap[2].toUpperCase() };
-  }
+  if (noCap) return { prov: noCap[2].toUpperCase() };
   return null;
 }
 
@@ -84,15 +170,16 @@ export function resolveItalianAddress(address: string | null | undefined): GeoRe
   const cleaned = address.trim().replace(/\s+/g, " ");
   const m = tryMatch(cleaned);
   if (!m) return null;
-  if (!PROVINCE_TO_REGION[m.prov]) return null;
 
-  const region = PROVINCE_TO_REGION[m.prov];
+  const info = PROVINCES[m.prov];
+  if (!info) return null;
+
   return {
-    city_display: m.city,
-    region_display: region,
+    province_display: info.name,
+    region_display: info.region,
     province_code: m.prov,
-    citta_slug: slugify(m.city),
-    regioni_slug: slugify(region),
-    aree: `${region}>${m.city}`,
+    citta_slug: slugify(info.name),
+    regioni_slug: slugify(info.region),
+    aree: `${info.region}>${info.name}`,
   };
 }
