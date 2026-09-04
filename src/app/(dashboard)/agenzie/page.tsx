@@ -69,6 +69,16 @@ export default function AgenziePage() {
   const [hasWebsite, setHasWebsite] = useState<"" | "yes" | "no">("");
   const [minRating, setMinRating] = useState("");
   const [showUpload, setShowUpload] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [newForm, setNewForm] = useState({
+    title: "",
+    sito_web: "",
+    status_curatela: "proposta",
+    publish_status: "draft",
+    note_curatore: "",
+  });
+  const [newErr, setNewErr] = useState<string | null>(null);
   const [exportUrl, setExportUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -290,6 +300,33 @@ export default function AgenziePage() {
     }
   }
 
+  async function createAgency(e: React.FormEvent) {
+    e.preventDefault();
+    if (!currentDomainId || !newForm.title.trim()) return;
+    setCreating(true);
+    setNewErr(null);
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) throw new Error("Sessione non valida");
+      const res = await fetch("/api/agencies", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ domain_id: currentDomainId, ...newForm }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error ?? `HTTP ${res.status}`);
+      // Redirect alla scheda dettaglio della nuova agenzia
+      window.location.href = `/agenzie/${j.id}`;
+    } catch (err) {
+      setNewErr((err as Error).message);
+    } finally {
+      setCreating(false);
+    }
+  }
+
   return (
     <div>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 20 }}>
@@ -299,9 +336,26 @@ export default function AgenziePage() {
             {currentDomain?.domain ?? "…"} — {stats?.total ?? "…"} record.
           </p>
         </div>
-        <button className="btn" onClick={() => setShowUpload((s) => !s)}>
-          {showUpload ? "Chiudi" : "Import / Export CSV"}
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            className="btn btn-primary"
+            onClick={() => {
+              setShowNew((s) => !s);
+              setShowUpload(false);
+            }}
+          >
+            {showNew ? "Chiudi" : "+ Nuova agenzia"}
+          </button>
+          <button
+            className="btn"
+            onClick={() => {
+              setShowUpload((s) => !s);
+              setShowNew(false);
+            }}
+          >
+            {showUpload ? "Chiudi" : "Import / Export CSV"}
+          </button>
+        </div>
       </div>
 
       {/* KPI */}
@@ -323,6 +377,87 @@ export default function AgenziePage() {
           <div style={{ fontSize: 24, fontWeight: 600 }}>{stats?.cities ?? "—"}</div>
         </div>
       </div>
+
+      {/* Nuova agenzia (collassabile) */}
+      {showNew && (
+        <form onSubmit={createAgency} className="cd" style={{ marginTop: 20 }}>
+          <div className="lb" style={{ marginBottom: 10 }}>
+            Nuova agenzia · dominio {currentDomain?.domain ?? "…"}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12 }}>
+            <div>
+              <div className="lb">Nome agenzia *</div>
+              <input
+                type="text"
+                required
+                placeholder="es. Studio Grafico Rossi"
+                value={newForm.title}
+                onChange={(e) => setNewForm((f) => ({ ...f, title: e.target.value }))}
+                style={agencyInputStyle}
+              />
+            </div>
+            <div>
+              <div className="lb">Sito web (opz)</div>
+              <input
+                type="url"
+                placeholder="https://…"
+                value={newForm.sito_web}
+                onChange={(e) => setNewForm((f) => ({ ...f, sito_web: e.target.value }))}
+                style={agencyInputStyle}
+              />
+            </div>
+            <div>
+              <div className="lb">Status curatela</div>
+              <select
+                value={newForm.status_curatela}
+                onChange={(e) => setNewForm((f) => ({ ...f, status_curatela: e.target.value }))}
+                style={agencyInputStyle}
+              >
+                <option value="proposta">proposta</option>
+                <option value="verificata">verificata</option>
+                <option value="rifiutata">rifiutata</option>
+              </select>
+            </div>
+            <div>
+              <div className="lb">Publish status</div>
+              <select
+                value={newForm.publish_status}
+                onChange={(e) => setNewForm((f) => ({ ...f, publish_status: e.target.value }))}
+                style={agencyInputStyle}
+              >
+                <option value="draft">draft</option>
+                <option value="publish">publish</option>
+                <option value="pending">pending</option>
+              </select>
+            </div>
+            <div style={{ gridColumn: "1 / -1" }}>
+              <div className="lb">Note curatore (opz)</div>
+              <textarea
+                rows={2}
+                placeholder="Note interne, contesto, come è stata trovata…"
+                value={newForm.note_curatore}
+                onChange={(e) => setNewForm((f) => ({ ...f, note_curatore: e.target.value }))}
+                style={{ ...agencyInputStyle, fontFamily: "inherit", resize: "vertical" }}
+              />
+            </div>
+          </div>
+          {newErr && (
+            <div style={{ color: "var(--red)", fontSize: 12, marginTop: 10 }}>✗ {newErr}</div>
+          )}
+          <div style={{ marginTop: 14, display: "flex", gap: 8, alignItems: "center" }}>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={!currentDomainId || creating || !newForm.title.trim()}
+            >
+              {creating ? "Creazione…" : "Crea agenzia"}
+            </button>
+            <span className="muted" style={{ fontSize: 11 }}>
+              Sarai portato alla scheda dettaglio. Poi puoi arricchirla con l&apos;agent updater.
+            </span>
+          </div>
+        </form>
+      )}
 
       {/* Upload (collassabile) */}
       {showUpload && (
@@ -776,5 +911,16 @@ const inputStyle: React.CSSProperties = {
   color: "var(--fg)",
   borderRadius: 6,
   fontSize: 12,
+  fontFamily: "inherit",
+};
+
+const agencyInputStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "8px 12px",
+  background: "var(--bg3)",
+  border: "1px solid var(--bd)",
+  color: "var(--fg)",
+  borderRadius: 6,
+  fontSize: 13,
   fontFamily: "inherit",
 };
