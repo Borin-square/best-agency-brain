@@ -133,9 +133,24 @@ export async function GET(req: NextRequest) {
     total_agencies: areaTotal[key] ?? 0,
   }));
 
+  // Featured count per (area × skill): join agency_features → agencies del dominio
+  const { data: featRows, error: fErr } = await supabase
+    .from("agency_features")
+    .select("area_type, area_slug, skill_slug, agencies!inner(domain_id)")
+    .eq("agencies.domain_id", domainId);
+  if (fErr) return NextResponse.json({ error: fErr.message }, { status: 500 });
+  const featured: Record<string, Record<string, number>> = {};
+  for (const r of featRows ?? []) {
+    const key = `${(r as { area_type: string }).area_type}:${(r as { area_slug: string }).area_slug}`;
+    const skill = (r as { skill_slug: string }).skill_slug;
+    if (!featured[key]) featured[key] = {};
+    featured[key][skill] = (featured[key][skill] ?? 0) + 1;
+  }
+
   return NextResponse.json({
     skills: skills.map((s) => ({ slug: s.slug, label: s.label })),
     areas: areasOrdered,
     matrix, // matrix[areaKey][skillSlug] = count
+    featured, // featured[areaKey][skillSlug] = count
   });
 }

@@ -46,6 +46,7 @@ const CSV_HEADERS = [
   "Status pubblicazione",
   "Note curatore",
   "Stato",
+  "Featured",
 ] as const;
 
 function csvEscape(v: unknown): string {
@@ -80,7 +81,7 @@ function competenzeUnion(a: Record<string, unknown>): string[] {
   return out;
 }
 
-function rowToCsv(a: Record<string, unknown>): string {
+function rowToCsv(a: Record<string, unknown>, featuresByAgency: Map<string, string>): string {
   const values = [
     a.wp_id,
     a.title,
@@ -123,6 +124,7 @@ function rowToCsv(a: Record<string, unknown>): string {
     a.publish_status,
     a.note_curatore,
     computeStato(a),
+    featuresByAgency.get(a.id as string) ?? "",
   ];
   return values.map(csvEscape).join(",");
 }
@@ -161,7 +163,30 @@ export async function GET(req: Request) {
     from += PAGE;
   }
 
-  const lines = [CSV_HEADERS.join(","), ...all.map(rowToCsv)];
+  // Prefetch agency_features (join sul dominio filtrato lato JOIN Supabase)
+  // e raggruppa per agency_id in stringa pipe-list: "type:area:skill:rank|…"
+  let featQuery = supabase
+    .from("agency_features")
+    .select("agency_id, area_type, area_slug, skill_slug, sort_order, agencies!inner(domain_id)")
+    .order("sort_order", { ascending: true });
+  if (domainId) featQuery = featQuery.eq("agencies.domain_id", domainId);
+  const { data: featRows, error: fErr } = await featQuery;
+  if (fErr) return NextResponse.json({ error: fErr.message }, { status: 500 });
+  const featuresByAgency = new Map<string, string>();
+  for (const r of featRows ?? []) {
+    const row = r as {
+      agency_id: string;
+      area_type: string;
+      area_slug: string;
+      skill_slug: string;
+      sort_order: number;
+    };
+    const entry = `${row.area_type}:${row.area_slug}:${row.skill_slug}:${row.sort_order}`;
+    const cur = featuresByAgency.get(row.agency_id);
+    featuresByAgency.set(row.agency_id, cur ? `${cur}|${entry}` : entry);
+  }
+
+  const lines = [CSV_HEADERS.join(","), ...all.map((a) => rowToCsv(a, featuresByAgency))];
   const csv = "\uFEFF" + lines.join("\n"); // BOM per Excel/WP All Import
 
   return new Response(csv, {
