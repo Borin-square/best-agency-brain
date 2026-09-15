@@ -10,7 +10,8 @@ export async function GET(req: NextRequest) {
 
   const supabase = createServiceClient();
 
-  const cols = "regioni, citta, verifica, status_curatela, enrichment_status";
+  const cols =
+    "regioni, citta, verifica, status_curatela, publish_status, enrichment_status, industries, competenze_core";
   let q = supabase.from("agencies").select(cols).limit(50000);
   if (domainId) q = q.eq("domain_id", domainId);
 
@@ -22,13 +23,25 @@ export async function GET(req: NextRequest) {
     citta: string | null;
     verifica: string | null;
     status_curatela: string | null;
+    publish_status: string | null;
     enrichment_status: string | null;
+    industries: string[] | null;
+    competenze_core: string[] | null;
   }>;
 
   const uniqueSorted = (values: Array<string | null>): string[] =>
     Array.from(new Set(values.filter((v): v is string => Boolean(v && v.trim())))).sort((a, b) =>
       a.localeCompare(b, "it"),
     );
+
+  const uniqueFromArrays = (values: Array<string[] | null>): string[] => {
+    const set = new Set<string>();
+    for (const arr of values) {
+      if (!Array.isArray(arr)) continue;
+      for (const v of arr) if (typeof v === "string" && v.trim()) set.add(v);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "it"));
+  };
 
   // Mappa regione → città (dropdown città si restringe quando regione è selezionata).
   const cittaByRegione: Record<string, Set<string>> = {};
@@ -49,6 +62,9 @@ export async function GET(req: NextRequest) {
     citta_by_regione: cittaByRegioneOut,
     verifica: uniqueSorted(rows.map((r) => r.verifica)),
     status_curatela: uniqueSorted(rows.map((r) => r.status_curatela)),
+    publish_status: uniqueSorted(rows.map((r) => r.publish_status)),
     enrichment_status: uniqueSorted(rows.map((r) => r.enrichment_status)),
+    industries: uniqueFromArrays(rows.map((r) => r.industries)),
+    competenze_core: uniqueFromArrays(rows.map((r) => r.competenze_core)),
   });
 }

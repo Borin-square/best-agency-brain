@@ -87,6 +87,63 @@ interface Agency {
   case_studies: unknown | null;
   google_partner_cert: boolean | null;
 
+  // ---- Data dictionary (migration 0012) ----
+  parent_slug: string | null;
+  alternate_names: string[] | null;
+  incorporation_year: number | null;
+  legal_form: string | null;
+  founder_leader: unknown | null;
+
+  deliverables: string[] | null;
+  platforms_tech: string[] | null;
+  industries: string[] | null;
+  audiences: string[] | null;
+  ideal_client_sizes: string[] | null;
+  engagement_models: string[] | null;
+
+  min_project_budget: number | null;
+  min_project_currency: string | null;
+  typical_project_min: number | null;
+  typical_project_max: number | null;
+  pricing_models: string[] | null;
+
+  differentiators: unknown | null;
+  declared_methodology: string | null;
+  faq: unknown | null;
+  best_for: unknown | null;
+  less_suitable_for: unknown | null;
+
+  review_summary: string | null;
+  review_strengths: unknown | null;
+  review_criticisms: unknown | null;
+  review_analyzed_count: number | null;
+  review_analysis_confidence: string | null;
+  review_snapshot_date: string | null;
+
+  editorial_summary: string | null;
+  eval_strengths: unknown | null;
+  eval_limitations: unknown | null;
+  evidence_grade: string | null;
+  evaluation_confidence: string | null;
+  human_reviewed: boolean | null;
+
+  revenue_2024: number | null;
+  revenue_2025: number | null;
+  revenue_2026: number | null;
+  employees_2024: number | null;
+  employees_2025: number | null;
+  employees_2026: number | null;
+  ebitda_2024: number | null;
+  ebitda_2025: number | null;
+  ebitda_2026: number | null;
+
+  seo_title: string | null;
+  meta_description: string | null;
+  indexation_status: string | null;
+
+  last_verified_at: string | null;
+  quality_gate_score: number | null;
+
   created_at: string;
   updated_at: string;
 }
@@ -253,6 +310,76 @@ export default function AgencyDetailPage({ params }: { params: Promise<{ id: str
       <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>
         {url}
       </a>
+    ) : null;
+
+  // Renderizza un valore jsonb in modo leggibile.
+  // - Array di stringhe → tag list
+  // - Array di oggetti {q,a} → domande/risposte
+  // - Altrimenti → JSON pretty
+  const json = (v: unknown): React.ReactNode => {
+    if (v === null || v === undefined) return null;
+    if (Array.isArray(v)) {
+      if (v.length === 0) return null;
+      if (v.every((x) => typeof x === "string")) return arr(v as string[]);
+      // Array di oggetti: mostro come blocchi compatti
+      return (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {v.map((item, i) => (
+            <div
+              key={i}
+              style={{
+                background: "var(--bg3)",
+                border: "1px solid var(--bd)",
+                borderRadius: 6,
+                padding: 8,
+                fontSize: 12,
+              }}
+            >
+              <pre
+                style={{
+                  margin: 0,
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-word",
+                  fontFamily: "ui-monospace, monospace",
+                  color: "var(--fg2)",
+                }}
+              >
+                {JSON.stringify(item, null, 2)}
+              </pre>
+            </div>
+          ))}
+        </div>
+      );
+    }
+    if (typeof v === "object") {
+      return (
+        <pre
+          style={{
+            margin: 0,
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
+            fontFamily: "ui-monospace, monospace",
+            fontSize: 12,
+            color: "var(--fg2)",
+            background: "var(--bg3)",
+            border: "1px solid var(--bd)",
+            borderRadius: 6,
+            padding: 8,
+          }}
+        >
+          {JSON.stringify(v, null, 2)}
+        </pre>
+      );
+    }
+    return String(v);
+  };
+
+  const money = (v: number | null, currency: string | null = "EUR") =>
+    v != null ? (
+      <span>
+        {v.toLocaleString("it-IT")}
+        <span className="muted"> {currency ?? "EUR"}</span>
+      </span>
     ) : null;
 
   return (
@@ -499,6 +626,198 @@ export default function AgencyDetailPage({ params }: { params: Promise<{ id: str
         </div>
         <Field label="Google Place ID" value={agency.google_place_id} mono />
         <Field label="Foto Google" value={agency.google_foto_url} mono />
+      </Section>
+
+      {/* ============================================================== */}
+      {/* NUOVE SEZIONI — data dictionary (0012_dictionary_additive.sql) */}
+      {/* ============================================================== */}
+
+      <Section title="Identità estesa">
+        <Field label="Parent slug" value={agency.parent_slug} mono />
+        <Field label="Legal form" value={agency.legal_form} />
+        <Field label="Incorporation year" value={agency.incorporation_year} />
+        <div style={{ gridColumn: "1 / -1" }}>
+          <Field label="Alternate names" value={arr(agency.alternate_names)} />
+        </div>
+        <div style={{ gridColumn: "1 / -1" }}>
+          <Field label="Founder / leader" value={json(agency.founder_leader)} />
+        </div>
+      </Section>
+
+      <Section title="Servizi & fit clienti">
+        <div style={{ gridColumn: "1 / -1" }}>
+          <Field label="Deliverables" value={arr(agency.deliverables)} />
+        </div>
+        <div style={{ gridColumn: "1 / -1" }}>
+          <Field label="Platforms & tech" value={arr(agency.platforms_tech)} />
+        </div>
+        <div style={{ gridColumn: "1 / -1" }}>
+          <Field label="Industries" value={arr(agency.industries)} />
+        </div>
+        <Field label="Audiences" value={arr(agency.audiences)} />
+        <Field label="Ideal client sizes" value={arr(agency.ideal_client_sizes)} />
+        <div style={{ gridColumn: "1 / -1" }}>
+          <Field label="Engagement models" value={arr(agency.engagement_models)} />
+        </div>
+      </Section>
+
+      <Section title="Pricing strutturato">
+        <Field
+          label="Budget minimo progetto"
+          value={money(agency.min_project_budget, agency.min_project_currency)}
+        />
+        <Field
+          label="Budget tipico (range)"
+          value={
+            agency.typical_project_min != null || agency.typical_project_max != null
+              ? `${agency.typical_project_min?.toLocaleString("it-IT") ?? "?"} — ${agency.typical_project_max?.toLocaleString("it-IT") ?? "?"} ${agency.min_project_currency ?? "EUR"}`
+              : null
+          }
+        />
+        <div style={{ gridColumn: "1 / -1" }}>
+          <Field label="Pricing models" value={arr(agency.pricing_models)} />
+        </div>
+      </Section>
+
+      <Section title="Contenuti strutturati">
+        <div style={{ gridColumn: "1 / -1" }}>
+          <Field label="Differentiators" value={json(agency.differentiators)} />
+        </div>
+        <div style={{ gridColumn: "1 / -1" }}>
+          <Field label="Declared methodology" value={agency.declared_methodology} />
+        </div>
+        <div style={{ gridColumn: "1 / -1" }}>
+          <Field label="FAQ" value={json(agency.faq)} />
+        </div>
+        <div style={{ gridColumn: "1 / -1" }}>
+          <Field label="Best for" value={json(agency.best_for)} />
+        </div>
+        <div style={{ gridColumn: "1 / -1" }}>
+          <Field label="Less suitable for" value={json(agency.less_suitable_for)} />
+        </div>
+      </Section>
+
+      <Section title="Recensioni AI">
+        <Field
+          label="Analysis confidence"
+          value={
+            agency.review_analysis_confidence ? (
+              <span className="bd-badge bd-muted">{agency.review_analysis_confidence}</span>
+            ) : null
+          }
+        />
+        <Field label="Recensioni analizzate" value={agency.review_analyzed_count} />
+        <Field
+          label="Snapshot date"
+          value={
+            agency.review_snapshot_date
+              ? new Date(agency.review_snapshot_date).toLocaleDateString("it-IT")
+              : null
+          }
+        />
+        <div />
+        <div style={{ gridColumn: "1 / -1" }}>
+          <Field label="Summary" value={agency.review_summary} />
+        </div>
+        <div style={{ gridColumn: "1 / -1" }}>
+          <Field label="Strengths ricorrenti" value={json(agency.review_strengths)} />
+        </div>
+        <div style={{ gridColumn: "1 / -1" }}>
+          <Field label="Criticisms ricorrenti" value={json(agency.review_criticisms)} />
+        </div>
+      </Section>
+
+      <Section title="Valutazione editoriale">
+        <Field
+          label="Evidence grade"
+          value={
+            agency.evidence_grade ? (
+              <span className="bd-badge bd-muted">{agency.evidence_grade}</span>
+            ) : null
+          }
+        />
+        <Field
+          label="Evaluation confidence"
+          value={
+            agency.evaluation_confidence ? (
+              <span className="bd-badge bd-muted">{agency.evaluation_confidence}</span>
+            ) : null
+          }
+        />
+        <Field
+          label="Human reviewed"
+          value={
+            agency.human_reviewed ? (
+              <span className="bd-badge bd-success">Sì</span>
+            ) : (
+              <span className="bd-badge bd-muted">No</span>
+            )
+          }
+        />
+        <div />
+        <div style={{ gridColumn: "1 / -1" }}>
+          <Field label="Editorial summary" value={agency.editorial_summary} />
+        </div>
+        <div style={{ gridColumn: "1 / -1" }}>
+          <Field label="Strengths (con evidenze)" value={json(agency.eval_strengths)} />
+        </div>
+        <div style={{ gridColumn: "1 / -1" }}>
+          <Field label="Limitations" value={json(agency.eval_limitations)} />
+        </div>
+      </Section>
+
+      <Section title="Financial">
+        <Field label="Revenue 2024" value={money(agency.revenue_2024, "EUR")} />
+        <Field label="Employees 2024" value={agency.employees_2024} />
+        <Field label="EBITDA 2024" value={money(agency.ebitda_2024, "EUR")} />
+        <div />
+        <Field label="Revenue 2025" value={money(agency.revenue_2025, "EUR")} />
+        <Field label="Employees 2025" value={agency.employees_2025} />
+        <Field label="EBITDA 2025" value={money(agency.ebitda_2025, "EUR")} />
+        <div />
+        <Field label="Revenue 2026" value={money(agency.revenue_2026, "EUR")} />
+        <Field label="Employees 2026" value={agency.employees_2026} />
+        <Field label="EBITDA 2026" value={money(agency.ebitda_2026, "EUR")} />
+      </Section>
+
+      <Section title="SEO">
+        <Field label="SEO title (override)" value={agency.seo_title} />
+        <Field
+          label="Indexation status"
+          value={
+            agency.indexation_status ? (
+              <span
+                className={`bd-badge ${
+                  agency.indexation_status === "index"
+                    ? "bd-success"
+                    : agency.indexation_status === "eligible"
+                      ? "bd-warn"
+                      : "bd-muted"
+                }`}
+              >
+                {agency.indexation_status}
+              </span>
+            ) : null
+          }
+        />
+        <div style={{ gridColumn: "1 / -1" }}>
+          <Field label="Meta description" value={agency.meta_description} />
+        </div>
+      </Section>
+
+      <Section title="Workflow esteso">
+        <Field
+          label="Ultima verifica editoriale"
+          value={
+            agency.last_verified_at
+              ? new Date(agency.last_verified_at).toLocaleString("it-IT")
+              : null
+          }
+        />
+        <Field
+          label="Quality gate score"
+          value={agency.quality_gate_score != null ? agency.quality_gate_score.toFixed(2) : null}
+        />
       </Section>
 
       <Section title="Enrichment tracking">

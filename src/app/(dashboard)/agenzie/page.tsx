@@ -3,6 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useDomain } from "@/components/DomainProvider";
+import ColumnChooser, {
+  loadColumnsFromStorage,
+  type ColumnOption,
+} from "@/components/ColumnChooser";
 
 interface AgentMeta {
   id: string;
@@ -33,14 +37,25 @@ interface AgencyRow {
   id: string;
   wp_id: number | null;
   title: string;
+  sito_web: string | null;
+  email: string | null;
+  telefono: string | null;
   citta: string | null;
   regioni: string | null;
   verifica: string | null;
   status_curatela: string | null;
+  publish_status: string | null;
+  competenze_core: string[] | null;
+  competenze_principali: string[] | null;
+  industries: string[] | null;
+  audiences: string[] | null;
+  min_project_budget: number | null;
+  min_project_currency: string | null;
   google_rating: number | null;
   google_recensioni_count: number | null;
   match_confidence: number | null;
   last_enriched_at: string | null;
+  last_verified_at: string | null;
 }
 
 interface ListResponse {
@@ -49,6 +64,32 @@ interface ListResponse {
   page: number;
   pages: number;
 }
+
+// Config colonne disponibili — l'utente sceglie quali mostrare via ColumnChooser.
+// `always: true` = colonna sempre visibile e non toggleable.
+// `defaultVisible: true` = mostrata la prima volta o dopo reset.
+const COLUMNS: ColumnOption[] = [
+  { key: "agenzia", label: "Agenzia", defaultVisible: true, always: true },
+  { key: "citta", label: "Città", defaultVisible: true },
+  { key: "regione", label: "Regione", defaultVisible: false },
+  { key: "verifica", label: "Verifica", defaultVisible: true },
+  { key: "curation_status", label: "Curation status", defaultVisible: false },
+  { key: "publish_status", label: "Publication status", defaultVisible: false },
+  { key: "google", label: "Google (rating)", defaultVisible: true },
+  { key: "match", label: "Match confidence", defaultVisible: true },
+  { key: "sito_web", label: "Sito web", defaultVisible: false },
+  { key: "email", label: "Email", defaultVisible: false },
+  { key: "telefono", label: "Telefono", defaultVisible: false },
+  { key: "competenze_core", label: "Servizi core", defaultVisible: false },
+  { key: "competenze_principali", label: "Servizi principali", defaultVisible: false },
+  { key: "industries", label: "Industries", defaultVisible: false },
+  { key: "audiences", label: "Audiences", defaultVisible: false },
+  { key: "min_project_budget", label: "Budget minimo", defaultVisible: false },
+  { key: "arricchita", label: "Ultima arricchita", defaultVisible: true },
+  { key: "last_verified_at", label: "Ultima verifica", defaultVisible: false },
+];
+
+const COLUMNS_STORAGE_KEY = "bab.agenzie.cols.v1";
 
 export default function AgenziePage() {
   const { currentDomainId, currentDomain } = useDomain();
@@ -60,14 +101,27 @@ export default function AgenziePage() {
 
   const [list, setList] = useState<ListResponse | null>(null);
   const [page, setPage] = useState(1);
+
+  // ---- Filtri (principali) ----
   const [q, setQ] = useState("");
   const [regione, setRegione] = useState("");
   const [citta, setCitta] = useState("");
   const [verifica, setVerifica] = useState("");
+
+  // ---- Filtri (avanzati) ----
+  const [statusCuratela, setStatusCuratela] = useState("");
+  const [publishStatus, setPublishStatus] = useState("");
   const [enriched, setEnriched] = useState<"" | "yes" | "no">("");
   const [enrichmentStatus, setEnrichmentStatus] = useState("");
   const [hasWebsite, setHasWebsite] = useState<"" | "yes" | "no">("");
+  const [hasEmail, setHasEmail] = useState<"" | "yes" | "no">("");
+  const [hasPhone, setHasPhone] = useState<"" | "yes" | "no">("");
   const [minRating, setMinRating] = useState("");
+  const [industry, setIndustry] = useState("");
+  const [competenzaCore, setCompetenzaCore] = useState("");
+  const [featured, setFeatured] = useState<"" | "yes" | "no">("");
+
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -87,14 +141,37 @@ export default function AgenziePage() {
     citta: string[];
     citta_by_regione: Record<string, string[]>;
     verifica: string[];
+    status_curatela: string[];
+    publish_status: string[];
     enrichment_status: string[];
-  }>({ regioni: [], citta: [], citta_by_regione: {}, verifica: [], enrichment_status: [] });
+    industries: string[];
+    competenze_core: string[];
+  }>({
+    regioni: [],
+    citta: [],
+    citta_by_regione: {},
+    verifica: [],
+    status_curatela: [],
+    publish_status: [],
+    enrichment_status: [],
+    industries: [],
+    competenze_core: [],
+  });
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [agents, setAgents] = useState<AgentMeta[]>([]);
   const [runAgentId, setRunAgentId] = useState<string>("");
   const [running, setRunning] = useState(false);
   const [runMsg, setRunMsg] = useState<string | null>(null);
+
+  // Column chooser: idrata dal localStorage al mount client-side per evitare
+  // hydration mismatch (Server e Client devono partire dallo stesso set).
+  const [visibleCols, setVisibleCols] = useState<Set<string>>(
+    () => new Set(COLUMNS.filter((c) => c.always || c.defaultVisible).map((c) => c.key)),
+  );
+  useEffect(() => {
+    setVisibleCols(loadColumnsFromStorage(COLUMNS_STORAGE_KEY, COLUMNS));
+  }, []);
 
   const loadStats = useCallback(async () => {
     if (!currentDomainId) return;
@@ -109,10 +186,17 @@ export default function AgenziePage() {
     if (regione) params.set("regione", regione);
     if (citta) params.set("citta", citta);
     if (verifica) params.set("verifica", verifica);
+    if (statusCuratela) params.set("status_curatela", statusCuratela);
+    if (publishStatus) params.set("publish_status", publishStatus);
     if (enriched) params.set("enriched", enriched);
     if (enrichmentStatus) params.set("enrichment_status", enrichmentStatus);
     if (hasWebsite) params.set("has_website", hasWebsite);
+    if (hasEmail) params.set("has_email", hasEmail);
+    if (hasPhone) params.set("has_phone", hasPhone);
     if (minRating) params.set("min_rating", minRating);
+    if (industry) params.set("industry", industry);
+    if (competenzaCore) params.set("competenza_core", competenzaCore);
+    if (featured) params.set("featured", featured);
     const res = await fetch(`/api/agencies?${params}`);
     if (res.ok) setList(await res.json());
   }, [
@@ -121,10 +205,17 @@ export default function AgenziePage() {
     regione,
     citta,
     verifica,
+    statusCuratela,
+    publishStatus,
     enriched,
     enrichmentStatus,
     hasWebsite,
+    hasEmail,
+    hasPhone,
     minRating,
+    industry,
+    competenzaCore,
+    featured,
     currentDomainId,
   ]);
 
@@ -152,20 +243,47 @@ export default function AgenziePage() {
     Number(!!regione) +
     Number(!!citta) +
     Number(!!verifica) +
+    Number(!!statusCuratela) +
+    Number(!!publishStatus) +
     Number(!!enriched) +
     Number(!!enrichmentStatus) +
     Number(!!hasWebsite) +
-    Number(!!minRating);
+    Number(!!hasEmail) +
+    Number(!!hasPhone) +
+    Number(!!minRating) +
+    Number(!!industry) +
+    Number(!!competenzaCore) +
+    Number(!!featured);
+
+  const activeAdvancedFilters =
+    Number(!!statusCuratela) +
+    Number(!!publishStatus) +
+    Number(!!enriched) +
+    Number(!!enrichmentStatus) +
+    Number(!!hasWebsite) +
+    Number(!!hasEmail) +
+    Number(!!hasPhone) +
+    Number(!!minRating) +
+    Number(!!industry) +
+    Number(!!competenzaCore) +
+    Number(!!featured);
 
   function resetFilters() {
     setQ("");
     setRegione("");
     setCitta("");
     setVerifica("");
+    setStatusCuratela("");
+    setPublishStatus("");
     setEnriched("");
     setEnrichmentStatus("");
     setHasWebsite("");
+    setHasEmail("");
+    setHasPhone("");
     setMinRating("");
+    setIndustry("");
+    setCompetenzaCore("");
+    setFeatured("");
     setPage(1);
   }
 
@@ -318,7 +436,6 @@ export default function AgenziePage() {
       });
       const j = await res.json();
       if (!res.ok) throw new Error(j.error ?? `HTTP ${res.status}`);
-      // Redirect alla scheda dettaglio della nuova agenzia
       window.location.href = `/agenzie/${j.id}`;
     } catch (err) {
       setNewErr((err as Error).message);
@@ -326,6 +443,9 @@ export default function AgenziePage() {
       setCreating(false);
     }
   }
+
+  // Elenco colonne mostrate (in ordine dichiarazione), rispettando la selezione utente
+  const shownCols = COLUMNS.filter((c) => visibleCols.has(c.key));
 
   return (
     <div>
@@ -559,7 +679,7 @@ export default function AgenziePage() {
         </div>
       )}
 
-      {/* Filtri */}
+      {/* Filtri principali (sempre visibili) */}
       <div
         style={{
           display: "flex",
@@ -583,7 +703,7 @@ export default function AgenziePage() {
           value={regione}
           onChange={(e) => {
             setRegione(e.target.value);
-            setCitta(""); // reset città quando cambia regione
+            setCitta("");
             setPage(1);
           }}
           style={inputStyle}
@@ -625,59 +745,22 @@ export default function AgenziePage() {
             </option>
           ))}
         </select>
-        <select
-          value={enriched}
-          onChange={(e) => {
-            setEnriched(e.target.value as "" | "yes" | "no");
-            setPage(1);
+
+        <button
+          onClick={() => setShowAdvanced((s) => !s)}
+          style={{
+            padding: "7px 12px",
+            background: showAdvanced ? "var(--bg2)" : "var(--bg3)",
+            border: `1px solid ${showAdvanced || activeAdvancedFilters > 0 ? "var(--accent, #3b82f6)" : "var(--bd)"}`,
+            borderRadius: 6,
+            color: "var(--fg)",
+            fontSize: 12,
+            fontFamily: "inherit",
+            cursor: "pointer",
           }}
-          style={inputStyle}
         >
-          <option value="">Arricchite (tutte)</option>
-          <option value="yes">Sì</option>
-          <option value="no">Mai</option>
-        </select>
-        <select
-          value={enrichmentStatus}
-          onChange={(e) => {
-            setEnrichmentStatus(e.target.value);
-            setPage(1);
-          }}
-          style={inputStyle}
-        >
-          <option value="">Status enrich (tutti)</option>
-          {filterOpts.enrichment_status.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
-        <select
-          value={hasWebsite}
-          onChange={(e) => {
-            setHasWebsite(e.target.value as "" | "yes" | "no");
-            setPage(1);
-          }}
-          style={inputStyle}
-        >
-          <option value="">Sito (indifferente)</option>
-          <option value="yes">Con sito</option>
-          <option value="no">Senza sito</option>
-        </select>
-        <select
-          value={minRating}
-          onChange={(e) => {
-            setMinRating(e.target.value);
-            setPage(1);
-          }}
-          style={inputStyle}
-        >
-          <option value="">Rating (qualsiasi)</option>
-          <option value="3">⭐ 3+</option>
-          <option value="4">⭐ 4+</option>
-          <option value="4.5">⭐ 4.5+</option>
-          <option value="4.8">⭐ 4.8+</option>
-        </select>
+          {showAdvanced ? "Nascondi filtri" : `Filtri avanzati${activeAdvancedFilters > 0 ? ` (${activeAdvancedFilters})` : ""}`}
+        </button>
 
         {activeFilters > 0 && (
           <button
@@ -689,13 +772,169 @@ export default function AgenziePage() {
           </button>
         )}
 
-        {list && (
-          <span className="muted" style={{ marginLeft: "auto", fontSize: 12 }}>
-            {list.total} risultati · pag {list.page}/{list.pages || 1}
-            {selected.size > 0 && <> · <b>{selected.size} selezionate</b></>}
-          </span>
-        )}
+        <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+          {list && (
+            <span className="muted" style={{ fontSize: 12 }}>
+              {list.total} risultati · pag {list.page}/{list.pages || 1}
+              {selected.size > 0 && <> · <b>{selected.size} selezionate</b></>}
+            </span>
+          )}
+          <ColumnChooser
+            columns={COLUMNS}
+            value={visibleCols}
+            onChange={setVisibleCols}
+            storageKey={COLUMNS_STORAGE_KEY}
+          />
+        </div>
       </div>
+
+      {/* Filtri avanzati (collassabili) */}
+      {showAdvanced && (
+        <div className="cd" style={{ marginTop: 12, padding: 16 }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
+              gap: 12,
+            }}
+          >
+            <FilterSelect
+              label="Curation status"
+              value={statusCuratela}
+              onChange={(v) => {
+                setStatusCuratela(v);
+                setPage(1);
+              }}
+              options={filterOpts.status_curatela}
+              placeholder="Tutti"
+            />
+            <FilterSelect
+              label="Publication status"
+              value={publishStatus}
+              onChange={(v) => {
+                setPublishStatus(v);
+                setPage(1);
+              }}
+              options={filterOpts.publish_status}
+              placeholder="Tutti"
+            />
+            <FilterSelect
+              label="Arricchite"
+              value={enriched}
+              onChange={(v) => {
+                setEnriched(v as "" | "yes" | "no");
+                setPage(1);
+              }}
+              options={[
+                { value: "yes", label: "Sì" },
+                { value: "no", label: "Mai" },
+              ]}
+              placeholder="Tutte"
+            />
+            <FilterSelect
+              label="Status enrichment"
+              value={enrichmentStatus}
+              onChange={(v) => {
+                setEnrichmentStatus(v);
+                setPage(1);
+              }}
+              options={filterOpts.enrichment_status}
+              placeholder="Tutti"
+            />
+            <FilterSelect
+              label="Sito web"
+              value={hasWebsite}
+              onChange={(v) => {
+                setHasWebsite(v as "" | "yes" | "no");
+                setPage(1);
+              }}
+              options={[
+                { value: "yes", label: "Con sito" },
+                { value: "no", label: "Senza sito" },
+              ]}
+              placeholder="Indifferente"
+            />
+            <FilterSelect
+              label="Email"
+              value={hasEmail}
+              onChange={(v) => {
+                setHasEmail(v as "" | "yes" | "no");
+                setPage(1);
+              }}
+              options={[
+                { value: "yes", label: "Con email" },
+                { value: "no", label: "Senza email" },
+              ]}
+              placeholder="Indifferente"
+            />
+            <FilterSelect
+              label="Telefono"
+              value={hasPhone}
+              onChange={(v) => {
+                setHasPhone(v as "" | "yes" | "no");
+                setPage(1);
+              }}
+              options={[
+                { value: "yes", label: "Con telefono" },
+                { value: "no", label: "Senza telefono" },
+              ]}
+              placeholder="Indifferente"
+            />
+            <FilterSelect
+              label="Rating minimo"
+              value={minRating}
+              onChange={(v) => {
+                setMinRating(v);
+                setPage(1);
+              }}
+              options={[
+                { value: "3", label: "⭐ 3+" },
+                { value: "4", label: "⭐ 4+" },
+                { value: "4.5", label: "⭐ 4.5+" },
+                { value: "4.8", label: "⭐ 4.8+" },
+              ]}
+              placeholder="Qualsiasi"
+            />
+            {filterOpts.industries.length > 0 && (
+              <FilterSelect
+                label="Industry"
+                value={industry}
+                onChange={(v) => {
+                  setIndustry(v);
+                  setPage(1);
+                }}
+                options={filterOpts.industries}
+                placeholder="Tutte"
+              />
+            )}
+            {filterOpts.competenze_core.length > 0 && (
+              <FilterSelect
+                label="Servizio core"
+                value={competenzaCore}
+                onChange={(v) => {
+                  setCompetenzaCore(v);
+                  setPage(1);
+                }}
+                options={filterOpts.competenze_core}
+                placeholder="Tutti"
+              />
+            )}
+            <FilterSelect
+              label="Featured"
+              value={featured}
+              onChange={(v) => {
+                setFeatured(v as "" | "yes" | "no");
+                setPage(1);
+              }}
+              options={[
+                { value: "yes", label: "Solo featured" },
+                { value: "no", label: "Non featured" },
+              ]}
+              placeholder="Indifferente"
+            />
+          </div>
+        </div>
+      )}
 
       {/* Action bar selezione */}
       {selected.size > 0 && (
@@ -758,7 +997,7 @@ export default function AgenziePage() {
       )}
 
       {/* Tabella */}
-      <div className="cd" style={{ marginTop: 12, padding: 0 }}>
+      <div className="cd" style={{ marginTop: 12, padding: 0, overflowX: "auto" }}>
         <table className="tbl">
           <thead>
             <tr>
@@ -772,24 +1011,21 @@ export default function AgenziePage() {
                   style={{ cursor: "pointer" }}
                 />
               </th>
-              <th>Agenzia</th>
-              <th>Città</th>
-              <th>Verifica</th>
-              <th>Google</th>
-              <th>Match</th>
-              <th>Arricchita</th>
+              {shownCols.map((col) => (
+                <th key={col.key}>{col.label}</th>
+              ))}
             </tr>
           </thead>
           <tbody>
             {!list ? (
               <tr>
-                <td colSpan={7} style={{ padding: 20, color: "var(--fg3)" }}>
+                <td colSpan={shownCols.length + 1} style={{ padding: 20, color: "var(--fg3)" }}>
                   Caricamento…
                 </td>
               </tr>
             ) : list.rows.length === 0 ? (
               <tr>
-                <td colSpan={7} style={{ padding: 20, color: "var(--fg3)" }}>
+                <td colSpan={shownCols.length + 1} style={{ padding: 20, color: "var(--fg3)" }}>
                   Nessuna agenzia.
                 </td>
               </tr>
@@ -798,7 +1034,6 @@ export default function AgenziePage() {
                 <tr
                   key={a.id}
                   onClick={(e) => {
-                    // Non naviga se click è sulla checkbox
                     const target = e.target as HTMLElement;
                     if (target.tagName === "INPUT" || target.closest("input")) return;
                     window.location.href = `/agenzie/${a.id}`;
@@ -816,61 +1051,9 @@ export default function AgenziePage() {
                       style={{ cursor: "pointer" }}
                     />
                   </td>
-                  <td>
-                    <div style={{ fontWeight: 500 }}>{a.title}</div>
-                    {a.wp_id && (
-                      <div className="muted" style={{ marginTop: 2, fontSize: 11 }}>
-                        #{a.wp_id}
-                      </div>
-                    )}
-                  </td>
-                  <td>
-                    {a.citta ?? "—"}
-                    {a.regioni && <span className="muted"> · {a.regioni}</span>}
-                  </td>
-                  <td>
-                    {a.verifica ? (
-                      <span
-                        className={`bd-badge ${a.verifica === "verified" ? "bd-success" : "bd-muted"}`}
-                      >
-                        {a.verifica}
-                      </span>
-                    ) : (
-                      <span className="muted">—</span>
-                    )}
-                  </td>
-                  <td>
-                    {a.google_rating != null ? (
-                      <span>
-                        ⭐ {a.google_rating}{" "}
-                        <span className="muted">({a.google_recensioni_count ?? 0})</span>
-                      </span>
-                    ) : (
-                      <span className="muted">—</span>
-                    )}
-                  </td>
-                  <td>
-                    {a.match_confidence != null ? (
-                      <span
-                        className={`bd-badge ${
-                          a.match_confidence >= 0.7
-                            ? "bd-success"
-                            : a.match_confidence >= 0.4
-                              ? "bd-warn"
-                              : "bd-error"
-                        }`}
-                      >
-                        {(a.match_confidence * 100).toFixed(0)}%
-                      </span>
-                    ) : (
-                      <span className="muted">—</span>
-                    )}
-                  </td>
-                  <td className="muted">
-                    {a.last_enriched_at
-                      ? new Date(a.last_enriched_at).toLocaleDateString("it-IT")
-                      : "mai"}
-                  </td>
+                  {shownCols.map((col) => (
+                    <td key={col.key}>{renderCell(col.key, a)}</td>
+                  ))}
                 </tr>
               ))
             )}
@@ -900,6 +1083,205 @@ export default function AgenziePage() {
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+// ---- Helpers cell renderer ----
+
+function renderCell(key: string, a: AgencyRow): React.ReactNode {
+  switch (key) {
+    case "agenzia":
+      return (
+        <>
+          <div style={{ fontWeight: 500 }}>{a.title}</div>
+          {a.wp_id && (
+            <div className="muted" style={{ marginTop: 2, fontSize: 11 }}>
+              #{a.wp_id}
+            </div>
+          )}
+        </>
+      );
+    case "citta":
+      return a.citta ? <span>{a.citta}</span> : <Dash />;
+    case "regione":
+      return a.regioni ?? <Dash />;
+    case "verifica":
+      return a.verifica ? (
+        <span
+          className={`bd-badge ${a.verifica === "verified" ? "bd-success" : "bd-muted"}`}
+        >
+          {a.verifica}
+        </span>
+      ) : (
+        <Dash />
+      );
+    case "curation_status":
+      return a.status_curatela ? (
+        <span className="bd-badge bd-muted">{a.status_curatela}</span>
+      ) : (
+        <Dash />
+      );
+    case "publish_status":
+      return a.publish_status ? (
+        <span
+          className={`bd-badge ${a.publish_status === "publish" ? "bd-success" : "bd-muted"}`}
+        >
+          {a.publish_status}
+        </span>
+      ) : (
+        <Dash />
+      );
+    case "google":
+      return a.google_rating != null ? (
+        <span>
+          ⭐ {a.google_rating}{" "}
+          <span className="muted">({a.google_recensioni_count ?? 0})</span>
+        </span>
+      ) : (
+        <Dash />
+      );
+    case "match":
+      return a.match_confidence != null ? (
+        <span
+          className={`bd-badge ${
+            a.match_confidence >= 0.7
+              ? "bd-success"
+              : a.match_confidence >= 0.4
+                ? "bd-warn"
+                : "bd-error"
+          }`}
+        >
+          {(a.match_confidence * 100).toFixed(0)}%
+        </span>
+      ) : (
+        <Dash />
+      );
+    case "sito_web":
+      return a.sito_web ? (
+        <a
+          href={a.sito_web}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ color: "var(--accent)", fontFamily: "ui-monospace, monospace", fontSize: 12 }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {a.sito_web.replace(/^https?:\/\//, "").slice(0, 40)}
+        </a>
+      ) : (
+        <Dash />
+      );
+    case "email":
+      return a.email ? <span style={{ fontSize: 12 }}>{a.email}</span> : <Dash />;
+    case "telefono":
+      return a.telefono ? <span style={{ fontSize: 12 }}>{a.telefono}</span> : <Dash />;
+    case "competenze_core":
+      return <TagList values={a.competenze_core} />;
+    case "competenze_principali":
+      return <TagList values={a.competenze_principali} />;
+    case "industries":
+      return <TagList values={a.industries} />;
+    case "audiences":
+      return <TagList values={a.audiences} />;
+    case "min_project_budget":
+      return a.min_project_budget != null ? (
+        <span>
+          {a.min_project_budget.toLocaleString("it-IT")}
+          <span className="muted"> {a.min_project_currency ?? "EUR"}</span>
+        </span>
+      ) : (
+        <Dash />
+      );
+    case "arricchita":
+      return (
+        <span className="muted">
+          {a.last_enriched_at
+            ? new Date(a.last_enriched_at).toLocaleDateString("it-IT")
+            : "mai"}
+        </span>
+      );
+    case "last_verified_at":
+      return (
+        <span className="muted">
+          {a.last_verified_at
+            ? new Date(a.last_verified_at).toLocaleDateString("it-IT")
+            : "mai"}
+        </span>
+      );
+    default:
+      return <Dash />;
+  }
+}
+
+function Dash() {
+  return <span className="muted">—</span>;
+}
+
+function TagList({ values }: { values: string[] | null }) {
+  if (!values || values.length === 0) return <Dash />;
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
+      {values.slice(0, 3).map((v) => (
+        <code
+          key={v}
+          style={{
+            fontSize: 10,
+            padding: "1px 6px",
+            background: "var(--bg3)",
+            borderRadius: 3,
+            color: "var(--fg2)",
+          }}
+        >
+          {v}
+        </code>
+      ))}
+      {values.length > 3 && (
+        <span className="muted" style={{ fontSize: 10 }}>
+          +{values.length - 3}
+        </span>
+      )}
+    </div>
+  );
+}
+
+// ---- FilterSelect ----
+
+type FilterOption = string | { value: string; label: string };
+
+function FilterSelect({
+  label,
+  value,
+  onChange,
+  options,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: FilterOption[];
+  placeholder: string;
+}) {
+  return (
+    <div>
+      <div className="lb" style={{ marginBottom: 4 }}>
+        {label}
+      </div>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={{ ...inputStyle, width: "100%" }}
+      >
+        <option value="">{placeholder}</option>
+        {options.map((o) => {
+          const val = typeof o === "string" ? o : o.value;
+          const lbl = typeof o === "string" ? o : o.label;
+          return (
+            <option key={val} value={val}>
+              {lbl}
+            </option>
+          );
+        })}
+      </select>
     </div>
   );
 }
