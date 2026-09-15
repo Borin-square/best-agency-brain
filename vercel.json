@@ -1,5 +1,6 @@
 {
   "crons": [
-    { "path": "/api/cron/agents/agency-updater", "schedule": "0 3 * * *" }
+    { "path": "/api/cron/agents/agency-updater", "schedule": "*/30 * * * *" },
+    { "path": "/api/cron/agents/agency-visual-enrichment", "schedule": "15 * * * *" }
   ]
 }
