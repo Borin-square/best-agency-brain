@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import {
   FIELDS_CATALOG,
   type FieldCategory,
@@ -91,12 +91,39 @@ const POLICY_LABEL_SHORT: Record<UpdatePolicy, string> = {
   computed_per_run: "Auto",
 };
 
+// Colonne DB non semanticamente rilevanti: se mancano nel catalog non alziamo
+// warning. Sono id/tracking sistem che possiamo comunque documentare.
+const IGNORED_DRIFT_COLUMNS = new Set<string>([]);
+
 export default function FieldsPage() {
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<"" | FieldCategory>("");
   const [source, setSource] = useState<"" | FieldSource>("");
   const [policy, setPolicy] = useState<"" | UpdatePolicy>("");
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
+
+  const [dbColumns, setDbColumns] = useState<string[] | null>(null);
+  const [dbError, setDbError] = useState<string | null>(null);
+  useEffect(() => {
+    fetch("/api/fields/db-columns")
+      .then((r) => r.json())
+      .then((d: { columns?: string[]; error?: string }) => {
+        if (d.error) setDbError(d.error);
+        else setDbColumns(d.columns ?? []);
+      })
+      .catch((e) => setDbError((e as Error).message));
+  }, []);
+
+  const drift = useMemo(() => {
+    if (!dbColumns) return null;
+    const catalogKeys = new Set(FIELDS_CATALOG.map((f) => f.key));
+    const dbSet = new Set(dbColumns);
+    const missingInCatalog = dbColumns.filter(
+      (c) => !catalogKeys.has(c) && !IGNORED_DRIFT_COLUMNS.has(c),
+    );
+    const missingInDb = FIELDS_CATALOG.filter((f) => !dbSet.has(f.key)).map((f) => f.key);
+    return { missingInCatalog, missingInDb, dbCount: dbColumns.length };
+  }, [dbColumns]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -152,6 +179,9 @@ export default function FieldsPage() {
         Documentazione operativa dei campi della tabella <code>agencies</code>: cosa contengono,
         chi li aggiorna, quando vengono sovrascritti.
       </p>
+
+      {/* Drift banner: confronta catalog con colonne reali DB */}
+      <DriftBanner drift={drift} error={dbError} loading={dbColumns === null && !dbError} />
 
       {/* Stats */}
       <div className="grid-4" style={{ marginTop: 20 }}>
@@ -375,6 +405,156 @@ function ExpandedField({ label, value }: { label: string; value: React.ReactNode
     <div>
       <div className="lb">{label}</div>
       <div style={{ fontSize: 12, marginTop: 4, color: "var(--fg)" }}>{value}</div>
+    </div>
+  );
+}
+
+function DriftBanner({
+  drift,
+  error,
+  loading,
+}: {
+  drift: { missingInCatalog: string[]; missingInDb: string[]; dbCount: number } | null;
+  error: string | null;
+  loading: boolean;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  if (loading) {
+    return (
+      <div
+        className="cd"
+        style={{ marginTop: 12, padding: 10, fontSize: 12, color: "var(--fg3)" }}
+      >
+        Verifica allineamento catalog ↔ DB…
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div
+        className="cd"
+        style={{
+          marginTop: 12,
+          padding: 10,
+          fontSize: 12,
+          color: "var(--red)",
+          borderColor: "rgba(239,68,68,.4)",
+        }}
+      >
+        Impossibile verificare allineamento DB: {error}
+      </div>
+    );
+  }
+
+  if (!drift) return null;
+
+  const hasIssues = drift.missingInCatalog.length > 0 || drift.missingInDb.length > 0;
+
+  if (!hasIssues) {
+    return (
+      <div
+        className="cd"
+        style={{
+          marginTop: 12,
+          padding: 10,
+          fontSize: 12,
+          color: "var(--grn)",
+          borderColor: "rgba(34,197,94,.4)",
+          background: "rgba(34,197,94,.05)",
+        }}
+      >
+        ✓ Catalog allineato con DB — {drift.dbCount} colonne di{" "}
+        <code>agencies</code>, {FIELDS_CATALOG.length} nel catalog.
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="cd"
+      style={{
+        marginTop: 12,
+        padding: 12,
+        fontSize: 12,
+        borderColor: drift.missingInDb.length > 0 ? "rgba(239,68,68,.4)" : "rgba(245,158,11,.4)",
+        background: drift.missingInDb.length > 0 ? "rgba(239,68,68,.05)" : "rgba(245,158,11,.05)",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          cursor: "pointer",
+        }}
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <div>
+          {drift.missingInDb.length > 0 && (
+            <span style={{ color: "var(--red)", fontWeight: 600, marginRight: 12 }}>
+              ⚠ {drift.missingInDb.length} campi nel catalog non esistono più in DB
+            </span>
+          )}
+          {drift.missingInCatalog.length > 0 && (
+            <span style={{ color: "#f59e0b", fontWeight: 600 }}>
+              ⚠ {drift.missingInCatalog.length} colonne DB non documentate nel catalog
+            </span>
+          )}
+        </div>
+        <span style={{ color: "var(--fg3)" }}>{expanded ? "▲" : "▼"}</span>
+      </div>
+      {expanded && (
+        <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--bd)" }}>
+          {drift.missingInDb.length > 0 && (
+            <div style={{ marginBottom: 12 }}>
+              <div className="lb" style={{ color: "var(--red)" }}>
+                Nel catalog ma non in DB (rimuovi dal file <code>fields-catalog.ts</code>)
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
+                {drift.missingInDb.map((k) => (
+                  <code
+                    key={k}
+                    style={{
+                      fontSize: 11,
+                      padding: "2px 8px",
+                      background: "rgba(239,68,68,.1)",
+                      borderRadius: 3,
+                      color: "var(--red)",
+                    }}
+                  >
+                    {k}
+                  </code>
+                ))}
+              </div>
+            </div>
+          )}
+          {drift.missingInCatalog.length > 0 && (
+            <div>
+              <div className="lb" style={{ color: "#f59e0b" }}>
+                In DB ma non documentate (aggiungi al file <code>fields-catalog.ts</code>)
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
+                {drift.missingInCatalog.map((k) => (
+                  <code
+                    key={k}
+                    style={{
+                      fontSize: 11,
+                      padding: "2px 8px",
+                      background: "rgba(245,158,11,.1)",
+                      borderRadius: 3,
+                      color: "#f59e0b",
+                    }}
+                  >
+                    {k}
+                  </code>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
