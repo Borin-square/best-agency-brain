@@ -15,6 +15,21 @@ interface AgentSummary {
     completed_at: string | null;
     rows_processed: number;
   } | null;
+  schedule_config: {
+    interval_minutes: number;
+    enabled: boolean;
+    last_run_at: string | null;
+  } | null;
+}
+
+function formatInterval(minutes: number): string {
+  if (minutes < 60) return `Ogni ${minutes} min`;
+  if (minutes < 1440) {
+    const h = minutes / 60;
+    return `Ogni ${h % 1 === 0 ? h : h.toFixed(1)} h`;
+  }
+  const d = minutes / 1440;
+  return `Ogni ${d % 1 === 0 ? d : d.toFixed(1)} g`;
 }
 
 export default function AgentsPage() {
@@ -37,7 +52,9 @@ export default function AgentsPage() {
   return (
     <div>
       <h1>Agents</h1>
-      <p className="muted">Registry degli agenti attivi. Cron config in vercel.json.</p>
+      <p className="muted">
+        Registry degli agenti attivi. Schedule dinamica: modificabile dalla scheda del singolo agente.
+      </p>
 
       <div className="cd" style={{ marginTop: 20, padding: 0 }}>
         <table className="tbl">
@@ -73,13 +90,34 @@ export default function AgentsPage() {
                     </div>
                   </td>
                   <td>
-                    <code style={{ fontSize: 11, color: "var(--fg2)" }}>{a.schedule}</code>
+                    {a.schedule_config ? (
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 500 }}>
+                          {formatInterval(a.schedule_config.interval_minutes)}
+                        </div>
+                        <div className="muted" style={{ fontSize: 10, marginTop: 2 }}>
+                          {a.schedule_config.enabled ? "cron on" : "cron off"}
+                        </div>
+                      </div>
+                    ) : a.schedule ? (
+                      <code style={{ fontSize: 11, color: "var(--fg2)" }}>{a.schedule}</code>
+                    ) : (
+                      <span className="muted">—</span>
+                    )}
                   </td>
                   <td>
                     <span
-                      className={`bd-badge ${a.enabled ? "bd-success" : "bd-muted"}`}
+                      className={`bd-badge ${
+                        a.schedule_config
+                          ? a.schedule_config.enabled
+                            ? "bd-success"
+                            : "bd-muted"
+                          : a.enabled
+                            ? "bd-success"
+                            : "bd-muted"
+                      }`}
                     >
-                      {a.enabled ? "ATTIVO" : "OFF"}
+                      {(a.schedule_config?.enabled ?? a.enabled) ? "ATTIVO" : "OFF"}
                     </span>
                   </td>
                   <td>
