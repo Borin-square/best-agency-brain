@@ -20,7 +20,14 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   if (!agent) return NextResponse.json({ error: "agent_not_found" }, { status: 404 });
   if (!agent.enabled) return NextResponse.json({ status: "disabled" });
 
-  const result = await runAgent(agent, { triggeredBy: "cron" });
+  // Filtro dominio opzionale (passato dal dispatcher via query string quando
+  // agent_schedules.domain_id è impostato).
+  const domainId = new URL(req.url).searchParams.get("domain_id")?.trim() || undefined;
+
+  const result = await runAgent(agent, {
+    triggeredBy: "cron",
+    filters: domainId ? { domainId } : {},
+  });
 
   // Aggiorna last_run_at nella tabella agent_schedules così il dispatcher
   // sa quando è terminata questa esecuzione (interval_minutes conta da qui).

@@ -25,6 +25,7 @@ interface Run {
 interface ScheduleConfig {
   interval_minutes: number;
   enabled: boolean;
+  domain_id: string | null;
   last_run_at: string | null;
   last_dispatched_at: string | null;
 }
@@ -57,7 +58,7 @@ export default function AgentDetailPage({
   params: Promise<{ agentId: string }>;
 }) {
   const { agentId } = use(params);
-  const { currentDomainId, currentDomain } = useDomain();
+  const { currentDomainId, currentDomain, domains } = useDomain();
   const [detail, setDetail] = useState<AgentDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
@@ -69,6 +70,7 @@ export default function AgentDetailPage({
   const [scheduleMsg, setScheduleMsg] = useState<string | null>(null);
   const [intervalMinutes, setIntervalMinutes] = useState<number>(60);
   const [scheduleEnabled, setScheduleEnabled] = useState<boolean>(true);
+  const [scheduleDomain, setScheduleDomain] = useState<string>(""); // "" = globale
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/agents/${agentId}`);
@@ -78,6 +80,7 @@ export default function AgentDetailPage({
       if (data.schedule_config) {
         setIntervalMinutes(data.schedule_config.interval_minutes);
         setScheduleEnabled(data.schedule_config.enabled);
+        setScheduleDomain(data.schedule_config.domain_id ?? "");
       }
     }
     setLoading(false);
@@ -101,6 +104,7 @@ export default function AgentDetailPage({
         body: JSON.stringify({
           interval_minutes: intervalMinutes,
           enabled: scheduleEnabled,
+          domain_id: scheduleDomain === "" ? null : scheduleDomain,
         }),
       });
       const data = await res.json();
@@ -198,6 +202,19 @@ export default function AgentDetailPage({
               style={selectStyle}
               title="Intervallo in minuti (1..43200)"
             />
+            <select
+              value={scheduleDomain}
+              onChange={(e) => setScheduleDomain(e.target.value)}
+              style={selectStyle}
+              title="Dominio target del cron. Globale = tutti i domini attivi."
+            >
+              <option value="">🌐 Globale (tutti i domini attivi)</option>
+              {domains.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.country_code} · {d.domain}
+                </option>
+              ))}
+            </select>
             <label style={{ display: "flex", gap: 6, fontSize: 12, alignItems: "center" }}>
               <input
                 type="checkbox"
