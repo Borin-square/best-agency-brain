@@ -10,12 +10,20 @@ export interface AgentRunFilters {
   agencyIds?: string[];
 }
 
+// Override runtime dei parametri hardcoded nell'agente (fill da
+// agent_schedules o body request). NULL / undefined = usa default del codice.
+export interface AgentOverrides {
+  refreshDays?: number;
+  batchSize?: number;
+}
+
 export interface AgentContext {
   runId: string;
   supabase: SupabaseClient;
   triggeredBy: "cron" | "manual" | `user:${string}`;
   filters: AgentRunFilters;
   payload: Record<string, unknown>; // arbitrario, dipende dall'agent
+  overrides: AgentOverrides;
   log: (msg: string, meta?: Record<string, unknown>) => void;
 }
 
@@ -40,6 +48,7 @@ interface RunOptions {
   triggeredBy: AgentContext["triggeredBy"];
   filters?: AgentRunFilters;
   payload?: Record<string, unknown>;
+  overrides?: AgentOverrides;
 }
 
 export async function runAgent(agent: Agent, opts: RunOptions): Promise<AgentResult> {
@@ -48,6 +57,7 @@ export async function runAgent(agent: Agent, opts: RunOptions): Promise<AgentRes
   const logs: Array<{ ts: string; msg: string; meta?: Record<string, unknown> }> = [];
   const filters: AgentRunFilters = opts.filters ?? {};
   const payload: Record<string, unknown> = opts.payload ?? {};
+  const overrides: AgentOverrides = opts.overrides ?? {};
 
   const { data: runRow, error: insertErr } = await supabase
     .from("agent_runs")
@@ -77,6 +87,7 @@ export async function runAgent(agent: Agent, opts: RunOptions): Promise<AgentRes
     triggeredBy: opts.triggeredBy,
     filters,
     payload,
+    overrides,
     log: (msg, meta) => {
       logs.push({ ts: new Date().toISOString(), msg, meta });
       console.log(`[${agent.id}] ${msg}`, meta ?? "");

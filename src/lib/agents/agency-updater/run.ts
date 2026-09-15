@@ -5,9 +5,11 @@ import { extractFromWebsite, type LlmExtraction } from "./sources/llm-extract";
 import { resolveItalianAddress } from "./sources/geo-resolver";
 import { fetchAllowedSkills, filterAndCap, type AgencySkill } from "@/lib/agency-skills";
 
-const BATCH_SIZE = 15; // scrape + LLM per agenzia ~10s → 15 × 10s = 150s < 300s (Hobby limit)
+const DEFAULT_BATCH_SIZE = 15; // scrape + LLM per agenzia ~10s → 15 × 10s = 150s < 300s
 const MAX_MANUAL_IDS = 30; // limite hard su selezione manuale per non sforare timeout
-const REFRESH_DAYS = 30;
+const DEFAULT_REFRESH_DAYS = 30;
+// Cap prudente per non sforare maxDuration (300s) anche con override utente
+const MAX_BATCH_SIZE = 40;
 
 // Solo domini con status "attivo" vengono arricchiti dal cron globale.
 const ACTIVE_DOMAIN_STATUSES = ["online", "fase_1", "fase_2", "fase_3"] as const;
@@ -109,7 +111,11 @@ function isEmpty(v: unknown): boolean {
 const AGENCY_SELECT =
   "id, wp_id, title, citta, sito_web, partita_iva, google_place_id, google_sito, last_enriched_at, descrizione_breve, content, competenze_core, competenze_principali, altre_competenze, caratteristiche, anno_di_fondazione, dimensione_team, lingue, fascia_di_prezzo, email, telefono, linkedin, instagram, behance, indirizzo_completo, alternate_names, founder_leader, deliverables, platforms_tech, industries, audiences, ideal_client_sizes, engagement_models, min_project_budget, min_project_currency, typical_project_min, typical_project_max, pricing_models, differentiators, declared_methodology, faq, domain_id";
 
-async function pickAgencies(ctx: AgentContext): Promise<AgencyRow[] | null> {
+async function pickAgencies(
+  ctx: AgentContext,
+  batchSize: number,
+  refreshDays: number,
+): Promise<AgencyRow[] | null> {
   const { agencyIds, domainId } = ctx.filters;
 
   // 1. Selezione manuale: ids espliciti (cap a MAX_MANUAL_IDS)
@@ -128,7 +134,7 @@ async function pickAgencies(ctx: AgentContext): Promise<AgencyRow[] | null> {
   }
 
   const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - REFRESH_DAYS);
+  cutoff.setDate(cutoff.getDate() - refreshDays);
 
   // 2. Filtro dominio singolo
   if (domainId) {
@@ -139,7 +145,7 @@ async function pickAgencies(ctx: AgentContext): Promise<AgencyRow[] | null> {
       .or(`last_enriched_at.is.null,last_enriched_at.lt.${cutoff.toISOString()}`)
       .neq("publish_status", "trash")
       .order("last_enriched_at", { ascending: true, nullsFirst: true })
-      .limit(BATCH_SIZE)
+      .limit(batchSize)
       .returns<AgencyRow[]>();
     if (error) {
       ctx.log("select_error", { error: error.message, mode: "domain" });
@@ -169,7 +175,7 @@ async function pickAgencies(ctx: AgentContext): Promise<AgencyRow[] | null> {
     .or(`last_enriched_at.is.null,last_enriched_at.lt.${cutoff.toISOString()}`)
     .neq("publish_status", "trash")
     .order("last_enriched_at", { ascending: true, nullsFirst: true })
-    .limit(BATCH_SIZE)
+    .limit(batchSize)
     .returns<AgencyRow[]>();
   if (error) {
     ctx.log("select_error", { error: error.message, mode: "global" });
@@ -204,13 +210,18 @@ function classifyCompetenze(
 }
 
 export async function runAgencyUpdater(ctx: AgentContext): Promise<AgentResult> {
+  const refreshDays = ctx.overrides.refreshDays ?? DEFAULT_REFRESH_DAYS;
+  const requestedBatch = ctx.overrides.batchSize ?? DEFAULT_BATCH_SIZE;
+  const batchSize = Math.max(1, Math.min(MAX_BATCH_SIZE, requestedBatch));
+
   ctx.log("start", {
-    batchSize: BATCH_SIZE,
-    refreshDays: REFRESH_DAYS,
+    batchSize,
+    refreshDays,
     filters: ctx.filters,
+    overrides: ctx.overrides,
   });
 
-  const agencies = await pickAgencies(ctx);
+  const agencies = await pickAgencies(ctx, batchSize, refreshDays);
   if (agencies === null) {
     return { status: "error", rowsProcessed: 0, rowsSuccess: 0, rowsError: 0 };
   }
@@ -472,7 +483,8 @@ export async function runAgencyUpdater(ctx: AgentContext): Promise<AgentResult> 
       scrapeHits,
       firecrawlHits,
       llmHits,
-      batchSize: BATCH_SIZE,
+      batchSize,
+      refreshDays,
     },
   };
 }

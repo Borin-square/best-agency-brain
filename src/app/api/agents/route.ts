@@ -19,7 +19,7 @@ export async function GET() {
           .maybeSingle(),
         supabase
           .from("agent_schedules")
-          .select("interval_minutes, enabled, last_run_at")
+          .select("interval_minutes, enabled, domain_id, refresh_days, batch_size, last_run_at")
           .eq("agent_id", a.id)
           .maybeSingle(),
       ]);

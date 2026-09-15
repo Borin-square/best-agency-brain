@@ -21,7 +21,7 @@ async function requireOwnerOrDev(req: NextRequest) {
 }
 
 const SELECT_COLUMNS =
-  "agent_id, interval_minutes, enabled, domain_id, last_run_at, last_dispatched_at, updated_at";
+  "agent_id, interval_minutes, enabled, domain_id, refresh_days, batch_size, last_run_at, last_dispatched_at, updated_at";
 
 // GET /api/agent-schedules/[id] — config schedule dell'agente
 export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
@@ -56,13 +56,17 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     interval_minutes?: number;
     enabled?: boolean;
     domain_id?: string | null;
+    refresh_days?: number | null;
+    batch_size?: number | null;
   } | null;
 
   if (
     !body ||
     (body.interval_minutes === undefined &&
       body.enabled === undefined &&
-      body.domain_id === undefined)
+      body.domain_id === undefined &&
+      body.refresh_days === undefined &&
+      body.batch_size === undefined)
   ) {
     return NextResponse.json({ error: "no_fields_to_update" }, { status: 400 });
   }
@@ -80,12 +84,37 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   }
   if (body.enabled !== undefined) update.enabled = !!body.enabled;
   if (body.domain_id !== undefined) {
-    // null esplicito → globale. Stringa → deve essere UUID valido.
     if (body.domain_id === null) update.domain_id = null;
     else if (typeof body.domain_id === "string" && body.domain_id.trim().length > 0) {
       update.domain_id = body.domain_id;
     } else {
       return NextResponse.json({ error: "invalid_domain_id" }, { status: 400 });
+    }
+  }
+  if (body.refresh_days !== undefined) {
+    if (body.refresh_days === null) update.refresh_days = null;
+    else {
+      const rd = Math.trunc(body.refresh_days);
+      if (!Number.isFinite(rd) || rd < 0 || rd > 365) {
+        return NextResponse.json(
+          { error: "invalid_refresh_days", hint: "0..365 giorni o null per default" },
+          { status: 400 },
+        );
+      }
+      update.refresh_days = rd;
+    }
+  }
+  if (body.batch_size !== undefined) {
+    if (body.batch_size === null) update.batch_size = null;
+    else {
+      const bs = Math.trunc(body.batch_size);
+      if (!Number.isFinite(bs) || bs < 1 || bs > 100) {
+        return NextResponse.json(
+          { error: "invalid_batch_size", hint: "1..100 o null per default" },
+          { status: 400 },
+        );
+      }
+      update.batch_size = bs;
     }
   }
 

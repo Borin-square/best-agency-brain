@@ -4,15 +4,18 @@ import { classifyVisuals, type ImageCandidate } from "./sources/classify-visuals
 import { downloadImage, uploadToStorage } from "./storage";
 import { extFromMime, extFromUrl, slugify, shortHash } from "./utils";
 
-const BATCH_SIZE = 5; // hard cap (fetch + N pagine team + N downloads/upload = pesante)
+const DEFAULT_BATCH_SIZE = 5; // fetch + N pagine team + N downloads/upload = pesante
+const MAX_BATCH_SIZE = 15; // cap prudente per non sforare maxDuration=300s
 const MAX_TEAM_IMAGES = 3;
+// Fallback per il cron globale (schedule senza domain_id): solo domini attivi.
+const ACTIVE_DOMAIN_STATUSES = ["online", "fase_1", "fase_2", "fase_3"] as const;
 const MAX_PORTFOLIO_IMAGES = 6;
 const MIN_IMAGE_WIDTH = 400; // meno restrittivo del 800 spec: molti loghi ufficiali sono <800
 const MIN_IMAGE_HEIGHT = 100;
 const MIN_LOGO_CONFIDENCE = 0.85;
 const MIN_TEAM_CONFIDENCE = 0.85;
 const MIN_PORTFOLIO_CONFIDENCE = 0.8;
-const REFRESH_DAYS = 30;
+const DEFAULT_REFRESH_DAYS = 30;
 
 interface AgencyRow {
   id: string;
@@ -112,44 +115,77 @@ interface OutcomeAgency {
   database_action: "UPDATED" | "PARTIALLY_UPDATED" | "NO_CHANGE" | "MANUAL_REVIEW" | "ERROR";
 }
 
-async function pickAgencies(ctx: AgentContext): Promise<AgencyRow[] | null> {
+async function pickAgencies(
+  ctx: AgentContext,
+  batchSize: number,
+  refreshDays: number,
+): Promise<AgencyRow[] | null> {
   const { agencyIds, domainId } = ctx.filters;
   const SELECT = "id, title, sito_web, logo_url, photos, portfolio, visual_enriched_at, citta";
 
-  // Selezione manuale: ids espliciti
+  // 1. Selezione manuale: ids espliciti
   if (agencyIds && agencyIds.length > 0) {
-    const capped = agencyIds.slice(0, BATCH_SIZE);
+    const capped = agencyIds.slice(0, batchSize);
     const { data, error } = await ctx.supabase
       .from("agencies")
       .select(SELECT)
       .in("id", capped)
       .returns<AgencyRow[]>();
     if (error) {
-      ctx.log("select_error", { error: error.message });
+      ctx.log("select_error", { error: error.message, mode: "manual_ids" });
       return null;
     }
     return data ?? [];
   }
 
-  // Filtro dominio
-  if (!domainId) {
-    ctx.log("no_filter", { hint: "richiede domain_id o agency_ids" });
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - refreshDays);
+
+  // 2. Filtro dominio singolo
+  if (domainId) {
+    const { data, error } = await ctx.supabase
+      .from("agencies")
+      .select(SELECT)
+      .eq("domain_id", domainId)
+      .not("sito_web", "is", null)
+      .neq("publish_status", "trash")
+      .or(`visual_enriched_at.is.null,visual_enriched_at.lt.${cutoff.toISOString()}`)
+      .order("visual_enriched_at", { ascending: true, nullsFirst: true })
+      .limit(batchSize)
+      .returns<AgencyRow[]>();
+    if (error) {
+      ctx.log("select_error", { error: error.message, mode: "domain" });
+      return null;
+    }
+    return data ?? [];
+  }
+
+  // 3. Cron globale: solo domini attivi, oldest first
+  const { data: activeDomains, error: domErr } = await ctx.supabase
+    .from("network_domains")
+    .select("id")
+    .in("status", ACTIVE_DOMAIN_STATUSES as unknown as string[]);
+  if (domErr) {
+    ctx.log("select_error", { error: domErr.message, mode: "active_domains" });
     return null;
   }
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - REFRESH_DAYS);
+  const activeIds = (activeDomains ?? []).map((d) => d.id as string);
+  if (activeIds.length === 0) {
+    ctx.log("no_active_domains");
+    return [];
+  }
   const { data, error } = await ctx.supabase
     .from("agencies")
     .select(SELECT)
-    .eq("domain_id", domainId)
+    .in("domain_id", activeIds)
     .not("sito_web", "is", null)
     .neq("publish_status", "trash")
     .or(`visual_enriched_at.is.null,visual_enriched_at.lt.${cutoff.toISOString()}`)
     .order("visual_enriched_at", { ascending: true, nullsFirst: true })
-    .limit(BATCH_SIZE)
+    .limit(batchSize)
     .returns<AgencyRow[]>();
   if (error) {
-    ctx.log("select_error", { error: error.message });
+    ctx.log("select_error", { error: error.message, mode: "global" });
     return null;
   }
   return data ?? [];
@@ -165,10 +201,16 @@ function buildAltDescriptions(agencyName: string, city: string | null) {
 }
 
 export async function runAgencyVisualEnrichment(ctx: AgentContext): Promise<AgentResult> {
+  const refreshDays = ctx.overrides.refreshDays ?? DEFAULT_REFRESH_DAYS;
+  const requestedBatch = ctx.overrides.batchSize ?? DEFAULT_BATCH_SIZE;
+  const batchSize = Math.max(1, Math.min(MAX_BATCH_SIZE, requestedBatch));
+
   ctx.log("start", {
     filters: ctx.filters,
-    batch_size: BATCH_SIZE,
+    batch_size: batchSize,
+    refresh_days: refreshDays,
     max_team: MAX_TEAM_IMAGES,
+    overrides: ctx.overrides,
   });
 
   if (!process.env.OPENAI_API_KEY) {
@@ -181,7 +223,7 @@ export async function runAgencyVisualEnrichment(ctx: AgentContext): Promise<Agen
     };
   }
 
-  const agencies = await pickAgencies(ctx);
+  const agencies = await pickAgencies(ctx, batchSize, refreshDays);
   if (agencies === null) {
     return { status: "error", rowsProcessed: 0, rowsSuccess: 0, rowsError: 0 };
   }

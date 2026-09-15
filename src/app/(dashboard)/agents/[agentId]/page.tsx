@@ -26,6 +26,8 @@ interface ScheduleConfig {
   interval_minutes: number;
   enabled: boolean;
   domain_id: string | null;
+  refresh_days: number | null;
+  batch_size: number | null;
   last_run_at: string | null;
   last_dispatched_at: string | null;
 }
@@ -71,6 +73,8 @@ export default function AgentDetailPage({
   const [intervalMinutes, setIntervalMinutes] = useState<number>(60);
   const [scheduleEnabled, setScheduleEnabled] = useState<boolean>(true);
   const [scheduleDomain, setScheduleDomain] = useState<string>(""); // "" = globale
+  const [refreshDaysInput, setRefreshDaysInput] = useState<string>(""); // "" = default codice
+  const [batchSizeInput, setBatchSizeInput] = useState<string>(""); // "" = default codice
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/agents/${agentId}`);
@@ -81,6 +85,12 @@ export default function AgentDetailPage({
         setIntervalMinutes(data.schedule_config.interval_minutes);
         setScheduleEnabled(data.schedule_config.enabled);
         setScheduleDomain(data.schedule_config.domain_id ?? "");
+        setRefreshDaysInput(
+          data.schedule_config.refresh_days != null ? String(data.schedule_config.refresh_days) : "",
+        );
+        setBatchSizeInput(
+          data.schedule_config.batch_size != null ? String(data.schedule_config.batch_size) : "",
+        );
       }
     }
     setLoading(false);
@@ -105,6 +115,9 @@ export default function AgentDetailPage({
           interval_minutes: intervalMinutes,
           enabled: scheduleEnabled,
           domain_id: scheduleDomain === "" ? null : scheduleDomain,
+          refresh_days:
+            refreshDaysInput.trim() === "" ? null : Number.parseInt(refreshDaysInput, 10),
+          batch_size: batchSizeInput.trim() === "" ? null : Number.parseInt(batchSizeInput, 10),
         }),
       });
       const data = await res.json();
@@ -215,6 +228,28 @@ export default function AgentDetailPage({
                 </option>
               ))}
             </select>
+            <div style={{ display: "flex", gap: 6 }}>
+              <input
+                type="number"
+                min={1}
+                max={100}
+                placeholder="Batch (auto)"
+                value={batchSizeInput}
+                onChange={(e) => setBatchSizeInput(e.target.value)}
+                style={{ ...selectStyle, flex: 1 }}
+                title="Agenzie per singolo run. Vuoto = default codice (15 updater, 5 visual)."
+              />
+              <input
+                type="number"
+                min={0}
+                max={365}
+                placeholder="Refresh gg (auto)"
+                value={refreshDaysInput}
+                onChange={(e) => setRefreshDaysInput(e.target.value)}
+                style={{ ...selectStyle, flex: 1 }}
+                title="Non ri-processare agenzie arricchite negli ultimi N giorni. 0 = sempre. Vuoto = default (30)."
+              />
+            </div>
             <label style={{ display: "flex", gap: 6, fontSize: 12, alignItems: "center" }}>
               <input
                 type="checkbox"

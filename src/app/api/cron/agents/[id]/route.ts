@@ -20,13 +20,24 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   if (!agent) return NextResponse.json({ error: "agent_not_found" }, { status: 404 });
   if (!agent.enabled) return NextResponse.json({ status: "disabled" });
 
-  // Filtro dominio opzionale (passato dal dispatcher via query string quando
-  // agent_schedules.domain_id è impostato).
-  const domainId = new URL(req.url).searchParams.get("domain_id")?.trim() || undefined;
+  // Params passati dal dispatcher (o direttamente): filtro dominio + override
+  // dei parametri hardcoded dell'agente.
+  const url = new URL(req.url);
+  const domainId = url.searchParams.get("domain_id")?.trim() || undefined;
+  const refreshDaysRaw = url.searchParams.get("refresh_days");
+  const batchSizeRaw = url.searchParams.get("batch_size");
+  const refreshDays =
+    refreshDaysRaw != null && refreshDaysRaw !== "" ? Number.parseInt(refreshDaysRaw, 10) : undefined;
+  const batchSize =
+    batchSizeRaw != null && batchSizeRaw !== "" ? Number.parseInt(batchSizeRaw, 10) : undefined;
 
   const result = await runAgent(agent, {
     triggeredBy: "cron",
     filters: domainId ? { domainId } : {},
+    overrides: {
+      refreshDays: Number.isFinite(refreshDays) ? refreshDays : undefined,
+      batchSize: Number.isFinite(batchSize) ? batchSize : undefined,
+    },
   });
 
   // Aggiorna last_run_at nella tabella agent_schedules così il dispatcher

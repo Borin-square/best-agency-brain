@@ -19,7 +19,9 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
       .limit(20),
     supabase
       .from("agent_schedules")
-      .select("interval_minutes, enabled, last_run_at, last_dispatched_at")
+      .select(
+        "interval_minutes, enabled, domain_id, refresh_days, batch_size, last_run_at, last_dispatched_at",
+      )
       .eq("agent_id", id)
       .maybeSingle(),
   ]);
