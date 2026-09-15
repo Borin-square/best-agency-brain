@@ -6,10 +6,12 @@ import { extFromMime, extFromUrl, slugify, shortHash } from "./utils";
 
 const BATCH_SIZE = 5; // hard cap (fetch + N pagine team + N downloads/upload = pesante)
 const MAX_TEAM_IMAGES = 3;
+const MAX_PORTFOLIO_IMAGES = 6;
 const MIN_IMAGE_WIDTH = 400; // meno restrittivo del 800 spec: molti loghi ufficiali sono <800
 const MIN_IMAGE_HEIGHT = 100;
 const MIN_LOGO_CONFIDENCE = 0.85;
 const MIN_TEAM_CONFIDENCE = 0.85;
+const MIN_PORTFOLIO_CONFIDENCE = 0.8;
 const REFRESH_DAYS = 30;
 
 interface AgencyRow {
@@ -18,6 +20,7 @@ interface AgencyRow {
   sito_web: string | null;
   logo_url: string | null;
   photos: unknown;
+  portfolio: unknown;
   visual_enriched_at: string | null;
   citta: string | null;
 }
@@ -33,6 +36,20 @@ interface TeamPhotoRecord {
   source_url: string;
   source_page_url: string;
   team_confidence: number;
+  uploaded_at: string;
+}
+
+interface PortfolioImageRecord {
+  public_url: string;
+  file_name: string;
+  mime_type: string;
+  width: number | null;
+  height: number | null;
+  alt_text: string;
+  source_url: string;
+  source_page_url: string;
+  portfolio_confidence: number;
+  reason: string;
   uploaded_at: string;
 }
 
@@ -79,12 +96,25 @@ interface OutcomeAgency {
     status: "UPLOADED_AS_TEAM" | "REVIEW_REQUIRED" | "REJECTED" | "DUPLICATE" | "ERROR";
     notes: string | null;
   }>;
+  portfolio_images: Array<{
+    original_source_url: string;
+    source_page_url: string;
+    public_url: string | null;
+    file_name: string;
+    mime_type: string;
+    width: number | null;
+    height: number | null;
+    alt_text: string;
+    portfolio_confidence: number;
+    status: "UPLOADED_AS_PORTFOLIO" | "REJECTED" | "DUPLICATE" | "ERROR";
+    notes: string | null;
+  }>;
   database_action: "UPDATED" | "PARTIALLY_UPDATED" | "NO_CHANGE" | "MANUAL_REVIEW" | "ERROR";
 }
 
 async function pickAgencies(ctx: AgentContext): Promise<AgencyRow[] | null> {
   const { agencyIds, domainId } = ctx.filters;
-  const SELECT = "id, title, sito_web, logo_url, photos, visual_enriched_at, citta";
+  const SELECT = "id, title, sito_web, logo_url, photos, portfolio, visual_enriched_at, citta";
 
   // Selezione manuale: ids espliciti
   if (agencyIds && agencyIds.length > 0) {
@@ -168,6 +198,7 @@ export async function runAgencyVisualEnrichment(ctx: AgentContext): Promise<Agen
   let logosAlreadyPresent = 0;
   let logosNotFound = 0;
   let teamUploaded = 0;
+  let portfolioUploaded = 0;
   let sentToReview = 0;
   let errCount = 0;
   let successCount = 0;
@@ -191,6 +222,7 @@ export async function runAgencyVisualEnrichment(ctx: AgentContext): Promise<Agen
         notes: null,
       },
       team_images: [],
+      portfolio_images: [],
       database_action: "NO_CHANGE",
     };
 
@@ -496,6 +528,114 @@ export async function runAgencyVisualEnrichment(ctx: AgentContext): Promise<Agen
       dbUpdates.photos = [...existingPhotos, ...newPhotos];
     }
 
+    // ---- 6b. PORTFOLIO IMAGES: top-N con portfolio_confidence >= MIN_PORTFOLIO_CONFIDENCE
+    const portfolioCandidates = (classification.portfolio ?? [])
+      .filter((p) => p.is_portfolio && p.portfolio_confidence >= MIN_PORTFOLIO_CONFIDENCE)
+      .sort((a, b) => b.portfolio_confidence - a.portfolio_confidence)
+      .slice(0, MAX_PORTFOLIO_IMAGES);
+
+    const existingPortfolio = Array.isArray(agency.portfolio)
+      ? (agency.portfolio as PortfolioImageRecord[])
+      : [];
+    const existingPortfolioSourceUrls = new Set(existingPortfolio.map((p) => p.source_url));
+    const newPortfolio: PortfolioImageRecord[] = [];
+    let portfolioIdx = existingPortfolio.length + 1;
+    let anyPortfolioChanged = false;
+
+    for (const pc of portfolioCandidates) {
+      const pOutcome: OutcomeAgency["portfolio_images"][number] = {
+        original_source_url: pc.src,
+        source_page_url: findPageForImage(pc.src, home.final_url, teamPages),
+        public_url: null,
+        file_name: "",
+        mime_type: "",
+        width: null,
+        height: null,
+        alt_text: `Progetto di ${agency.title}`,
+        portfolio_confidence: pc.portfolio_confidence,
+        status: "REJECTED",
+        notes: null,
+      };
+
+      if (existingPortfolioSourceUrls.has(pc.src)) {
+        pOutcome.status = "DUPLICATE";
+        pOutcome.notes = "Già presente nel portfolio";
+        outcome.portfolio_images.push(pOutcome);
+        continue;
+      }
+
+      const downloaded = await downloadImage(pc.src);
+      if (!downloaded) {
+        pOutcome.status = "ERROR";
+        pOutcome.notes = "Download fallito";
+        errors.push({
+          agency_id: agency.id,
+          asset_type: "PORTFOLIO_IMAGE",
+          source_url: pc.src,
+          error_type: "download",
+          message: "fetch fallito",
+        });
+        outcome.portfolio_images.push(pOutcome);
+        continue;
+      }
+      if (downloaded.width && downloaded.height) {
+        if (downloaded.width < MIN_IMAGE_WIDTH || downloaded.height < MIN_IMAGE_HEIGHT) {
+          pOutcome.status = "REJECTED";
+          pOutcome.notes = `Dimensioni insufficienti: ${downloaded.width}x${downloaded.height}`;
+          outcome.portfolio_images.push(pOutcome);
+          continue;
+        }
+      }
+
+      const ext = extFromMime(downloaded.mime_type) ?? extFromUrl(pc.src) ?? "jpg";
+      const idxStr = String(portfolioIdx++).padStart(2, "0");
+      const hash = shortHash(pc.src);
+      const fileName = `portfolio-${slug}-${idxStr}-${hash}.${ext}`;
+      const path = `portfolio/${fileName}`;
+      const up = await uploadToStorage(ctx.supabase, path, downloaded.buffer, downloaded.mime_type);
+      if ("error" in up) {
+        pOutcome.status = "ERROR";
+        pOutcome.notes = `Upload fallito: ${up.error}`;
+        errors.push({
+          agency_id: agency.id,
+          asset_type: "PORTFOLIO_IMAGE",
+          source_url: pc.src,
+          error_type: "upload",
+          message: up.error,
+        });
+        outcome.portfolio_images.push(pOutcome);
+        continue;
+      }
+
+      pOutcome.status = "UPLOADED_AS_PORTFOLIO";
+      pOutcome.public_url = up.public_url;
+      pOutcome.file_name = fileName;
+      pOutcome.mime_type = downloaded.mime_type;
+      pOutcome.width = downloaded.width;
+      pOutcome.height = downloaded.height;
+      outcome.portfolio_images.push(pOutcome);
+      portfolioUploaded++;
+      anyPortfolioChanged = true;
+
+      newPortfolio.push({
+        public_url: up.public_url,
+        file_name: fileName,
+        mime_type: downloaded.mime_type,
+        width: downloaded.width,
+        height: downloaded.height,
+        alt_text: `Progetto di ${agency.title}`,
+        source_url: pc.src,
+        source_page_url: pOutcome.source_page_url,
+        portfolio_confidence: pc.portfolio_confidence,
+        reason: pc.reason,
+        uploaded_at: new Date().toISOString(),
+      });
+    }
+
+    if (anyPortfolioChanged) {
+      dbUpdates.portfolio = [...existingPortfolio, ...newPortfolio];
+    }
+
     // ---- 7. Persist DB updates
     if (Object.keys(dbUpdates).length > 2 /* > timestamps */) {
       const { error: updErr } = await ctx.supabase.from("agencies").update(dbUpdates).eq("id", agency.id);
@@ -504,7 +644,10 @@ export async function runAgencyVisualEnrichment(ctx: AgentContext): Promise<Agen
         errors.push({ agency_id: agency.id, asset_type: "LOGO", source_url: null, error_type: "db_update", message: updErr.message });
         errCount++;
       } else {
-        outcome.database_action = logoChanged && anyTeamChanged ? "UPDATED" : logoChanged || anyTeamChanged ? "PARTIALLY_UPDATED" : "NO_CHANGE";
+        const changedCount =
+          Number(logoChanged) + Number(anyTeamChanged) + Number(anyPortfolioChanged);
+        outcome.database_action =
+          changedCount >= 3 ? "UPDATED" : changedCount > 0 ? "PARTIALLY_UPDATED" : "NO_CHANGE";
         successCount++;
       }
     } else {
@@ -526,6 +669,7 @@ export async function runAgencyVisualEnrichment(ctx: AgentContext): Promise<Agen
     logos_already_present: logosAlreadyPresent,
     logos_not_found: logosNotFound,
     team_images_uploaded: teamUploaded,
+    portfolio_images_uploaded: portfolioUploaded,
     images_sent_to_review: sentToReview,
     errors: errors.length,
   };

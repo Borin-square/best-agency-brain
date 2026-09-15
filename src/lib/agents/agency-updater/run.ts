@@ -28,6 +28,23 @@ const LLM_FILL_IF_EMPTY = [
   "instagram",
   "behance",
   "indirizzo_completo",
+  // ---- Dictionary (0012): fill-if-empty rispetta la curatela manuale ----
+  "alternate_names",
+  "founder_leader",
+  "deliverables",
+  "platforms_tech",
+  "industries",
+  "audiences",
+  "ideal_client_sizes",
+  "engagement_models",
+  "min_project_budget",
+  "min_project_currency",
+  "typical_project_min",
+  "typical_project_max",
+  "pricing_models",
+  "differentiators",
+  "declared_methodology",
+  "faq",
 ] as const;
 
 const LLM_ALWAYS_OVERWRITE = ["descrizione_breve", "content"] as const;
@@ -60,6 +77,25 @@ interface AgencyRow {
   instagram: string | null;
   behance: string | null;
   indirizzo_completo: string | null;
+
+  // ---- Dictionary (0012) ----
+  alternate_names: string[] | null;
+  founder_leader: unknown | null;
+  deliverables: string[] | null;
+  platforms_tech: string[] | null;
+  industries: string[] | null;
+  audiences: string[] | null;
+  ideal_client_sizes: string[] | null;
+  engagement_models: string[] | null;
+  min_project_budget: number | null;
+  min_project_currency: string | null;
+  typical_project_min: number | null;
+  typical_project_max: number | null;
+  pricing_models: string[] | null;
+  differentiators: unknown | null;
+  declared_methodology: string | null;
+  faq: unknown | null;
+
   domain_id: string;
 }
 
@@ -71,7 +107,7 @@ function isEmpty(v: unknown): boolean {
 }
 
 const AGENCY_SELECT =
-  "id, wp_id, title, citta, sito_web, partita_iva, google_place_id, google_sito, last_enriched_at, descrizione_breve, content, competenze_core, competenze_principali, altre_competenze, caratteristiche, anno_di_fondazione, dimensione_team, lingue, fascia_di_prezzo, email, telefono, linkedin, instagram, behance, indirizzo_completo, domain_id";
+  "id, wp_id, title, citta, sito_web, partita_iva, google_place_id, google_sito, last_enriched_at, descrizione_breve, content, competenze_core, competenze_principali, altre_competenze, caratteristiche, anno_di_fondazione, dimensione_team, lingue, fascia_di_prezzo, email, telefono, linkedin, instagram, behance, indirizzo_completo, alternate_names, founder_leader, deliverables, platforms_tech, industries, audiences, ideal_client_sizes, engagement_models, min_project_budget, min_project_currency, typical_project_min, typical_project_max, pricing_models, differentiators, declared_methodology, faq, domain_id";
 
 async function pickAgencies(ctx: AgentContext): Promise<AgencyRow[] | null> {
   const { agencyIds, domainId } = ctx.filters;
