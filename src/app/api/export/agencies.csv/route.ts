@@ -47,11 +47,89 @@ const CSV_HEADERS = [
   "Note curatore",
   "Stato",
   "Featured",
+
+  // ============================================================
+  // Colonne data dictionary (migration 0012). Aggiunte in coda per
+  // retrocompatibilità: le mappature WP All Import esistenti (colonne 1-42)
+  // restano valide. Nomi coerenti col v2 endpoint /api/export/agencies-v2.csv.
+  // Arrays → pipe-joined. JSONB → JSON stringified. NULL → stringa vuota.
+  // ============================================================
+
+  // Identità estesa
+  "Parent slug",
+  "Alternate names",
+  "Incorporation year",
+  "Legal form",
+  "Founder leader JSON",
+
+  // Servizi & fit clienti
+  "Deliverables",
+  "Platforms tech",
+  "Industries",
+  "Audiences",
+  "Ideal client sizes",
+  "Engagement models",
+
+  // Pricing strutturato
+  "Min project budget",
+  "Min project currency",
+  "Typical project min",
+  "Typical project max",
+  "Pricing models",
+
+  // Contenuti strutturati
+  "Differentiators JSON",
+  "Declared methodology",
+  "FAQ JSON",
+  "Best for JSON",
+  "Less suitable for JSON",
+
+  // Recensioni AI
+  "Review summary",
+  "Review strengths JSON",
+  "Review criticisms JSON",
+  "Review analyzed count",
+  "Review analysis confidence",
+  "Review snapshot date",
+
+  // Valutazione editoriale
+  "Editorial summary",
+  "Eval strengths JSON",
+  "Eval limitations JSON",
+  "Evidence grade",
+  "Evaluation confidence",
+  "Human reviewed",
+
+  // Financial per anno
+  "Revenue 2024",
+  "Revenue 2025",
+  "Revenue 2026",
+  "Employees 2024",
+  "Employees 2025",
+  "Employees 2026",
+  "EBITDA 2024",
+  "EBITDA 2025",
+  "EBITDA 2026",
+
+  // SEO override
+  "SEO title",
+  "Meta description",
+  "Indexation status",
+
+  // Workflow esteso
+  "Last verified at",
+  "Quality gate score",
+
+  // Portfolio images (jsonb da agency-visual-enrichment)
+  "Portfolio JSON",
 ] as const;
 
 function csvEscape(v: unknown): string {
   if (v === null || v === undefined) return "";
-  const s = Array.isArray(v) ? v.join("|") : String(v);
+  let s: string;
+  if (Array.isArray(v)) s = v.join("|");
+  else if (typeof v === "object") s = JSON.stringify(v);
+  else s = String(v);
   if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
   return s;
 }
@@ -83,6 +161,7 @@ function competenzeUnion(a: Record<string, unknown>): string[] {
 
 function rowToCsv(a: Record<string, unknown>, featuresByAgency: Map<string, string>): string {
   const values = [
+    // ---- Colonne legacy (retrocompat mappature WP All Import esistenti) ----
     a.wp_id,
     a.title,
     a.content,
@@ -125,6 +204,75 @@ function rowToCsv(a: Record<string, unknown>, featuresByAgency: Map<string, stri
     a.note_curatore,
     computeStato(a),
     featuresByAgency.get(a.id as string) ?? "",
+
+    // ---- Colonne data dictionary (in coda, in ordine identico ai CSV_HEADERS) ----
+    // Identità estesa
+    a.parent_slug,
+    a.alternate_names,
+    a.incorporation_year,
+    a.legal_form,
+    a.founder_leader,
+
+    // Servizi & fit clienti
+    a.deliverables,
+    a.platforms_tech,
+    a.industries,
+    a.audiences,
+    a.ideal_client_sizes,
+    a.engagement_models,
+
+    // Pricing strutturato
+    a.min_project_budget,
+    a.min_project_currency,
+    a.typical_project_min,
+    a.typical_project_max,
+    a.pricing_models,
+
+    // Contenuti strutturati
+    a.differentiators,
+    a.declared_methodology,
+    a.faq,
+    a.best_for,
+    a.less_suitable_for,
+
+    // Recensioni AI
+    a.review_summary,
+    a.review_strengths,
+    a.review_criticisms,
+    a.review_analyzed_count,
+    a.review_analysis_confidence,
+    a.review_snapshot_date,
+
+    // Valutazione editoriale
+    a.editorial_summary,
+    a.eval_strengths,
+    a.eval_limitations,
+    a.evidence_grade,
+    a.evaluation_confidence,
+    a.human_reviewed,
+
+    // Financial per anno
+    a.revenue_2024,
+    a.revenue_2025,
+    a.revenue_2026,
+    a.employees_2024,
+    a.employees_2025,
+    a.employees_2026,
+    a.ebitda_2024,
+    a.ebitda_2025,
+    a.ebitda_2026,
+
+    // SEO override
+    a.seo_title,
+    a.meta_description,
+    a.indexation_status,
+
+    // Workflow esteso
+    a.last_verified_at,
+    a.quality_gate_score,
+
+    // Portfolio images (jsonb)
+    a.portfolio,
   ];
   return values.map(csvEscape).join(",");
 }
