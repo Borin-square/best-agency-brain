@@ -8,21 +8,29 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
   if (!agent) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
   const supabase = createServiceClient();
-  const { data: runs } = await supabase
-    .from("agent_runs")
-    .select(
-      "id, started_at, completed_at, status, triggered_by, rows_processed, rows_success, rows_error, duration_ms, domain_id, network_domains(domain, country_code)",
-    )
-    .eq("agent_id", id)
-    .order("started_at", { ascending: false })
-    .limit(20);
+  const [runsRes, schedRes] = await Promise.all([
+    supabase
+      .from("agent_runs")
+      .select(
+        "id, started_at, completed_at, status, triggered_by, rows_processed, rows_success, rows_error, duration_ms, domain_id, network_domains(domain, country_code)",
+      )
+      .eq("agent_id", id)
+      .order("started_at", { ascending: false })
+      .limit(20),
+    supabase
+      .from("agent_schedules")
+      .select("interval_minutes, enabled, last_run_at, last_dispatched_at")
+      .eq("agent_id", id)
+      .maybeSingle(),
+  ]);
 
   return NextResponse.json({
     id: agent.id,
     name: agent.name,
     description: agent.description,
-    schedule: agent.schedule,
+    schedule: agent.schedule, // legacy hint, non è più source of truth
     enabled: agent.enabled,
-    runs: runs ?? [],
+    runs: runsRes.data ?? [],
+    schedule_config: schedRes.data ?? null,
   });
 }

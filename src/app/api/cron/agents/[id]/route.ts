@@ -1,12 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getAgent } from "@/lib/agents/registry";
 import { runAgent } from "@/lib/agents/framework";
+import { createServiceClient } from "@/lib/supabase-server";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-// Cron endpoint chiamato da Vercel Cron.
-// Autenticato via header Authorization: Bearer <CRON_SECRET>
+// Endpoint chiamato dal dispatcher /api/cron/dispatch (o direttamente da
+// Vercel Cron legacy). Autenticato via Authorization: Bearer <CRON_SECRET>.
 export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const authHeader = req.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
@@ -20,5 +21,14 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   if (!agent.enabled) return NextResponse.json({ status: "disabled" });
 
   const result = await runAgent(agent, { triggeredBy: "cron" });
+
+  // Aggiorna last_run_at nella tabella agent_schedules così il dispatcher
+  // sa quando è terminata questa esecuzione (interval_minutes conta da qui).
+  const supabase = createServiceClient();
+  await supabase
+    .from("agent_schedules")
+    .update({ last_run_at: new Date().toISOString() })
+    .eq("agent_id", id);
+
   return NextResponse.json({ ok: true, ...result });
 }
