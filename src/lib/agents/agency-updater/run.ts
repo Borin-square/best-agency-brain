@@ -215,7 +215,7 @@ export async function runAgencyUpdater(ctx: AgentContext): Promise<AgentResult> 
 
     // ---- Google Places ----
     try {
-      placesData = await findPlace(agency.title, agency.sito_web);
+      placesData = await findPlace(agency.title, agency.sito_web, agency.citta);
       placesStatus = placesData ? 200 : 404;
       if (placesData) placesHits++;
       else placesMisses++;

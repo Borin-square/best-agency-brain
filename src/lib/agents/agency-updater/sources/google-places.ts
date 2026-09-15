@@ -2,10 +2,12 @@
 // Docs: https://developers.google.com/maps/documentation/places/web-service/text-search
 //
 // Strategia:
-//   1. Query = SOLO nome agenzia (senza città: le città legacy in DB sono spesso sbagliate)
+//   1. Query = SOLO nome agenzia (aggiungere la città in query peggiora il matching)
 //   2. Chiediamo top 5 risultati
 //   3. Se un risultato ha websiteUri con dominio uguale ad agency.sito_web → match forte (conf 1.0)
-//   4. Altrimenti pick il best per similarity dei nomi (soglia 0.7 minima per accettare)
+//   4. Altrimenti pick il best per similarity dei nomi (soglia 0.9 minima) E la città deve
+//      comparire nel formattedAddress. Il domain match è considerato più affidabile della
+//      città in DB e non richiede il city-check.
 
 export interface PlacesResult {
   place_id: string;
@@ -33,7 +35,7 @@ const FIELD_MASK = [
   "places.photos.name",
 ].join(",");
 
-const MIN_ACCEPTABLE_SIMILARITY = 0.7;
+const MIN_ACCEPTABLE_SIMILARITY = 0.9;
 
 function normalize(s: string): string {
   return s
@@ -44,6 +46,25 @@ function normalize(s: string): string {
     .replace(/[^a-z0-9\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function normalizeGeneric(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function addressMatchesCity(address: string | null | undefined, city: string | null | undefined): boolean {
+  if (!address || !city) return false;
+  const c = normalizeGeneric(city);
+  if (!c) return false;
+  const a = normalizeGeneric(address);
+  const re = new RegExp(`(^|\\s)${c.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}(\\s|$)`);
+  return re.test(a);
 }
 
 function similarity(a: string, b: string): number {
@@ -105,11 +126,14 @@ function toResult(p: PlaceApiItem, name: string, confidence: number): PlacesResu
  * Trova il place più affidabile per un'agenzia.
  * @param name       nome ufficiale (usato come query)
  * @param website    sito ufficiale dell'agenzia — usato per validare il match via dominio
- * @returns PlacesResult se trovato con conf >= 0.7 o domain match; altrimenti null
+ * @param city       città dell'agenzia — usata come check post-match SOLO sul fallback nome
+ *                   (il domain match è considerato più affidabile e non richiede city-check)
+ * @returns PlacesResult se trovato con domain match, o (nome ≥ 0.9 E città combacia); altrimenti null
  */
 export async function findPlace(
   name: string,
   website: string | null,
+  city: string | null = null,
 ): Promise<PlacesResult | null> {
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
   if (!apiKey) throw new Error("GOOGLE_PLACES_API_KEY missing");
@@ -146,12 +170,16 @@ export async function findPlace(
     if (domainMatch) return toResult(domainMatch, name, 1);
   }
 
-  // 2. Fallback: best similarity — accetta solo se >= 0.7
+  // 2. Fallback: best similarity — accetta solo se >= 0.9 E la città combacia
+  //    con formattedAddress (city presente in DB obbligatoria per accettare).
+  //    Se city manca in DB, il fallback nome viene rifiutato per prudenza.
+  if (!city) return null;
+
   let bestPlace: PlaceApiItem | null = null;
   let bestConf = 0;
   for (const p of places) {
     const conf = similarity(name, p.displayName?.text ?? "");
-    if (conf > bestConf) {
+    if (conf > bestConf && addressMatchesCity(p.formattedAddress, city)) {
       bestConf = conf;
       bestPlace = p;
     }
