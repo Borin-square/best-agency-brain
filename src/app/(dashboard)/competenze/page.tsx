@@ -22,6 +22,8 @@ export default function CompetenzePage() {
   const [newLabel, setNewLabel] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [exportUrl, setExportUrl] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const load = useCallback(async () => {
     if (!currentDomainId) return;
@@ -37,6 +39,35 @@ export default function CompetenzePage() {
   useEffect(() => {
     if (!domainLoading) load();
   }, [domainLoading, load]);
+
+  const loadExportUrl = useCallback(async () => {
+    if (!currentDomainId) return;
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    if (!token) return;
+    const res = await fetch(`/api/agency-skills/export-url?domain_id=${currentDomainId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) {
+      const data = (await res.json()) as { url: string };
+      setExportUrl(data.url);
+    }
+  }, [currentDomainId]);
+
+  useEffect(() => {
+    setExportUrl(null);
+    setCopied(false);
+    if (currentDomainId) loadExportUrl();
+  }, [currentDomainId, loadExportUrl]);
+
+  async function copyExportUrl() {
+    if (!exportUrl) return;
+    await navigator.clipboard.writeText(exportUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
 
   async function authHeader(): Promise<Record<string, string>> {
     const {
@@ -210,6 +241,51 @@ export default function CompetenzePage() {
           <div style={{ color: "var(--red)", fontSize: 12, marginTop: 10 }}>✗ {err}</div>
         )}
       </form>
+
+      {/* Export CSV skills per WP All Import */}
+      <div className="cd" style={{ marginTop: 20 }}>
+        <div className="lb">Export CSV skills → WP All Import</div>
+        <p className="muted" style={{ marginTop: 4, marginBottom: 10, fontSize: 12 }}>
+          Tassonomia competenze con modificatore per generare le pagine di listing WP con qualificatore corretto (es. &quot;studio video&quot; vs &quot;agenzia SEO&quot;).
+        </p>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <input
+            type="text"
+            value={exportUrl ?? "Caricamento…"}
+            readOnly
+            onFocus={(e) => e.currentTarget.select()}
+            style={{
+              flex: 1,
+              padding: "8px 12px",
+              background: "var(--bg3)",
+              border: "1px solid var(--bd)",
+              color: "var(--fg2)",
+              borderRadius: 6,
+              fontSize: 12,
+              fontFamily: "ui-monospace, monospace",
+            }}
+          />
+          <button
+            className="btn"
+            onClick={copyExportUrl}
+            disabled={!exportUrl}
+            style={{ minWidth: 90 }}
+          >
+            {copied ? "✓ Copiato" : "Copia"}
+          </button>
+          {exportUrl && (
+            <a
+              href={exportUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn"
+              style={{ textDecoration: "none" }}
+            >
+              Apri
+            </a>
+          )}
+        </div>
+      </div>
 
       <div className="cd" style={{ marginTop: 20, padding: 0 }}>
         <table className="tbl">
