@@ -1,9 +1,9 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse, after, type NextRequest } from "next/server";
 import { createServiceClient } from "@/lib/supabase-server";
 import { getAgent } from "@/lib/agents/registry";
 
 export const runtime = "nodejs";
-export const maxDuration = 10; // dispatcher leggero: legge config e triggera via HTTP fire-and-forget
+export const maxDuration = 30; // dispatcher leggero: legge config e triggera via HTTP con after()
 
 // Cron master: chiamato ogni minuto da Vercel Cron.
 // Legge agent_schedules e triggera gli agenti per cui è passato il tempo
@@ -63,14 +63,14 @@ export async function GET(req: NextRequest) {
       toRun.map((r) => r.agent_id),
     );
 
-  // Fire-and-forget: chiama /api/cron/agents/[id]?...  senza attendere.
-  // Ogni chiamata istanzia una function separata con maxDuration=300s.
+  // Costruisce le URL da chiamare per ogni agente da runnare.
   const origin = new URL(req.url).origin;
   const dispatched: Array<{
     agent_id: string;
     domain_id: string | null;
     refresh_days: number | null;
     batch_size: number | null;
+    url: string;
   }> = [];
   for (const r of toRun) {
     const params = new URLSearchParams();
@@ -79,19 +79,43 @@ export async function GET(req: NextRequest) {
     if (r.batch_size !== null) params.set("batch_size", String(r.batch_size));
     const qs = params.toString();
     const url = `${origin}/api/cron/agents/${r.agent_id}${qs ? `?${qs}` : ""}`;
-    void fetch(url, {
-      method: "GET",
-      headers: cronSecret ? { authorization: `Bearer ${cronSecret}` } : {},
-    }).catch(() => {
-      // swallow: se la fetch fallisce, il run sarà retentato al prossimo dispatch
-    });
     dispatched.push({
       agent_id: r.agent_id,
       domain_id: r.domain_id,
       refresh_days: r.refresh_days,
       batch_size: r.batch_size,
+      url,
     });
   }
 
-  return NextResponse.json({ dispatched, at: now.toISOString() });
+  // Trigger reale via after(): Next.js/Vercel mantiene viva la function fino
+  // a che il callback si completa (max maxDuration secondi), ma la response
+  // torna subito al cron caller.
+  //
+  // Nota: ogni /api/cron/agents/[id] istanzia una function separata con
+  // maxDuration=300s. Non aspettiamo l'esito, ma serve almeno che la richiesta
+  // parta — con dispatchers su Vercel serverless, il pattern void fetch()
+  // veniva ucciso troppo presto.
+  after(async () => {
+    await Promise.allSettled(
+      dispatched.map((d) =>
+        fetch(d.url, {
+          method: "GET",
+          headers: cronSecret ? { authorization: `Bearer ${cronSecret}` } : {},
+        }).catch(() => {
+          // swallow: se la fetch fallisce, il run sarà retentato al prossimo dispatch
+        }),
+      ),
+    );
+  });
+
+  return NextResponse.json({
+    dispatched: dispatched.map((d) => ({
+      agent_id: d.agent_id,
+      domain_id: d.domain_id,
+      refresh_days: d.refresh_days,
+      batch_size: d.batch_size,
+    })),
+    at: now.toISOString(),
+  });
 }
