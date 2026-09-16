@@ -246,6 +246,7 @@ export async function runAgencyVisualEnrichment(ctx: AgentContext): Promise<Agen
   let successCount = 0;
 
   for (const agency of agencies) {
+    const itemStart = Date.now();
     const outcome: OutcomeAgency = {
       agency_id: agency.id,
       agency_name: agency.title,
@@ -701,6 +702,37 @@ export async function runAgencyVisualEnrichment(ctx: AgentContext): Promise<Agen
       outcome.database_action = outcome.logo.status === "REVIEW_REQUIRED" ? "MANUAL_REVIEW" : "NO_CHANGE";
       successCount++;
     }
+
+    // Registra la per-agency outcome in agent_run_items così la pagina
+    // dettaglio del run mostra la lista invece di "Nessun item registrato".
+    const itemStatus =
+      outcome.database_action === "ERROR"
+        ? "error"
+        : outcome.database_action === "MANUAL_REVIEW"
+          ? "partial"
+          : "success";
+    const itemErrors = errors.filter((e) => e.agency_id === agency.id);
+    const fieldsUpdated: string[] = [];
+    if (logoChanged) fieldsUpdated.push("logo_url", "logo_meta");
+    if (anyTeamChanged) fieldsUpdated.push("photos");
+    if (anyPortfolioChanged) fieldsUpdated.push("portfolio");
+    fieldsUpdated.push("visual_enriched_at", "visual_enrichment_status");
+    await ctx.supabase.from("agent_run_items").insert({
+      run_id: ctx.runId,
+      agency_id: agency.id,
+      status: itemStatus,
+      sources_hit: {
+        logo: outcome.logo.status,
+        team_images_uploaded: outcome.team_images.filter((t) => t.status === "UPLOADED_AS_TEAM")
+          .length,
+        portfolio_images_uploaded: outcome.portfolio_images.filter(
+          (p) => p.status === "UPLOADED_AS_PORTFOLIO",
+        ).length,
+      },
+      fields_updated: fieldsUpdated,
+      errors: itemErrors.length > 0 ? { items: itemErrors } : null,
+      duration_ms: Date.now() - itemStart,
+    });
 
     outcomes.push(outcome);
   }
