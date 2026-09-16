@@ -10,6 +10,7 @@ interface Skill {
   slug: string;
   label: string;
   sort_order: number;
+  query_modifier: string;
   created_at: string;
   updated_at: string;
 }
@@ -120,6 +121,31 @@ export default function CompetenzePage() {
     }
   }
 
+  async function updateQueryModifier(id: string, value: string) {
+    try {
+      const h = await authHeader();
+      const res = await fetch(`/api/agency-skills/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...h },
+        body: JSON.stringify({ query_modifier: value }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.error ?? `HTTP ${res.status}`);
+      }
+      // Aggiorno lo stato locale senza rifetch (evita flash).
+      setRows((prev) =>
+        prev.map((r) =>
+          r.id === id ? { ...r, query_modifier: value.trim() || "agenzia" } : r,
+        ),
+      );
+    } catch (e) {
+      alert((e as Error).message);
+      // Se fallisce, rifetch per rimettere il valore vero.
+      await load();
+    }
+  }
+
   async function remove(id: string, label: string) {
     if (!confirm(`Rimuovere "${label}"?\nNota: le agenzie che la usavano manterranno lo slug ma l'agent non la classificherà più.`)) return;
     try {
@@ -192,19 +218,22 @@ export default function CompetenzePage() {
               <th style={{ width: 40 }}>#</th>
               <th>Label</th>
               <th>Slug</th>
+              <th style={{ width: 180 }} title="Qualificatore usato per costruire query di ricerca contestuali. Default 'agenzia'. Per skill come video/fotografia usa 'studio'.">
+                Modificatore
+              </th>
               <th style={{ width: 160 }}></th>
             </tr>
           </thead>
           <tbody>
             {domainLoading || loading ? (
               <tr>
-                <td colSpan={4} style={{ padding: 20, color: "var(--fg3)" }}>
+                <td colSpan={5} style={{ padding: 20, color: "var(--fg3)" }}>
                   Caricamento…
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={4} style={{ padding: 20, color: "var(--fg3)" }}>
+                <td colSpan={5} style={{ padding: 20, color: "var(--fg3)" }}>
                   Nessuna competenza per questo dominio. Aggiungine una qui sopra.
                 </td>
               </tr>
@@ -215,6 +244,12 @@ export default function CompetenzePage() {
                   <td>{s.label}</td>
                   <td style={{ fontFamily: "ui-monospace, monospace", fontSize: 12, color: "var(--fg2)" }}>
                     {s.slug}
+                  </td>
+                  <td>
+                    <QueryModifierInput
+                      value={s.query_modifier ?? "agenzia"}
+                      onSave={(v) => updateQueryModifier(s.id, v)}
+                    />
                   </td>
                   <td>
                     <div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
@@ -259,6 +294,62 @@ export default function CompetenzePage() {
         </table>
       </div>
     </div>
+  );
+}
+
+function QueryModifierInput({
+  value,
+  onSave,
+}: {
+  value: string;
+  onSave: (v: string) => Promise<void> | void;
+}) {
+  const [local, setLocal] = useState(value);
+  const [dirty, setDirty] = useState(false);
+
+  // Se il valore server cambia (rifetch o update ottimistico), aggiorno
+  // il locale a meno che l'utente stia editando.
+  useEffect(() => {
+    if (!dirty) setLocal(value);
+  }, [value, dirty]);
+
+  async function commit() {
+    if (!dirty) return;
+    const trimmed = local.trim() || "agenzia";
+    setLocal(trimmed);
+    setDirty(false);
+    if (trimmed !== value) await onSave(trimmed);
+  }
+
+  return (
+    <input
+      type="text"
+      value={local}
+      placeholder="agenzia"
+      onChange={(e) => {
+        setLocal(e.target.value);
+        setDirty(true);
+      }}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+        if (e.key === "Escape") {
+          setLocal(value);
+          setDirty(false);
+          (e.target as HTMLInputElement).blur();
+        }
+      }}
+      style={{
+        width: "100%",
+        padding: "5px 8px",
+        background: "var(--bg3)",
+        border: `1px solid ${dirty ? "var(--accent, #3b82f6)" : "var(--bd)"}`,
+        color: "var(--fg)",
+        borderRadius: 4,
+        fontSize: 12,
+        fontFamily: "inherit",
+      }}
+    />
   );
 }
 

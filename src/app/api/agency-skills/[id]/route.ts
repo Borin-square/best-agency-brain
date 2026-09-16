@@ -34,6 +34,11 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     patch.slug = slugifySkill(body.slug.trim());
   if (typeof body.sort_order === "number" && Number.isFinite(body.sort_order))
     patch.sort_order = body.sort_order;
+  if (typeof body.query_modifier === "string") {
+    const qm = body.query_modifier.trim();
+    // stringa vuota → torna al default 'agenzia'; altrimenti valore custom
+    patch.query_modifier = qm.length > 0 ? qm : "agenzia";
+  }
 
   if (Object.keys(patch).length === 0) {
     return NextResponse.json({ error: "no_fields" }, { status: 400 });

@@ -45,6 +45,7 @@ export async function POST(req: NextRequest) {
     label?: string;
     slug?: string;
     sort_order?: number;
+    query_modifier?: string;
   } | null;
 
   if (!body?.domain_id || !body.label?.trim()) {
@@ -57,14 +58,19 @@ export async function POST(req: NextRequest) {
   const slug = (body.slug?.trim() || slugifySkill(label)).toLowerCase();
   if (!slug) return NextResponse.json({ error: "invalid_label" }, { status: 400 });
 
+  const insertRow: Record<string, unknown> = {
+    domain_id: body.domain_id,
+    slug,
+    label,
+    sort_order: Number.isFinite(body.sort_order) ? body.sort_order : 0,
+  };
+  if (typeof body.query_modifier === "string" && body.query_modifier.trim().length > 0) {
+    insertRow.query_modifier = body.query_modifier.trim();
+  }
+
   const { data, error } = await auth.supabase
     .from("agency_skills")
-    .insert({
-      domain_id: body.domain_id,
-      slug,
-      label,
-      sort_order: Number.isFinite(body.sort_order) ? body.sort_order : 0,
-    })
+    .insert(insertRow)
     .select()
     .single();
 
