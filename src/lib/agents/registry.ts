@@ -5,6 +5,7 @@ import { agencyVisualEnrichment } from "./agency-visual-enrichment/config";
 import { agencyQualityCheck } from "./agency-quality-check/config";
 import { agencySerpPosition } from "./agency-serp-position/config";
 import { matriceSerpPosition } from "./matrice-serp-position/config";
+import { radarEnricher } from "./radar-enricher/config";
 
 export const AGENTS: Record<string, Agent> = {
   [agencyUpdater.id]: agencyUpdater,
@@ -13,6 +14,7 @@ export const AGENTS: Record<string, Agent> = {
   [agencyQualityCheck.id]: agencyQualityCheck,
   [agencySerpPosition.id]: agencySerpPosition,
   [matriceSerpPosition.id]: matriceSerpPosition,
+  [radarEnricher.id]: radarEnricher,
 };
 
 export function getAgent(id: string): Agent | null {
