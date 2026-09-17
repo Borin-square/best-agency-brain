@@ -57,7 +57,7 @@ function cellStyle(n: number): React.CSSProperties {
   return { background: "rgba(34, 197, 94, 0.24)", color: "var(--fg)" };
 }
 
-export default function MatricePage() {
+export default function MatriceAgenzie() {
   const { currentDomain, currentDomainId, loading: domainLoading, reload } = useDomain();
   const [data, setData] = useState<Coverage | null>(null);
   const [loading, setLoading] = useState(true);
@@ -125,7 +125,7 @@ export default function MatricePage() {
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 20 }}>
         <div>
-          <h1>Matrice competenze × aree</h1>
+          <h1>Matrice agenzie</h1>
           <p className="muted">
             Copertura agenzie per{" "}
             {currentDomain ? (
