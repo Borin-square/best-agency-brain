@@ -66,6 +66,11 @@ create policy agency_issues_write_owner_dev on public.agency_issues
   );
 
 -- Seed default schedule per il nuovo agente (idempotente).
+-- ATTENZIONE: se batch_size supera il check constraint attivo su
+-- agent_schedules (originariamente 1..100 dalla 0015), questo INSERT
+-- fallisce e — in Supabase SQL Editor dove le migration girano in
+-- transazione singola — rollbacka anche la CREATE TABLE sopra.
+-- La migration 0018 alza il cap a 500 e va applicata PRIMA di questa.
 insert into public.agent_schedules (agent_id, interval_minutes, enabled, refresh_days, batch_size)
 values ('agency-quality-check', 1440, true, 7, 200)
 on conflict (agent_id) do nothing;
