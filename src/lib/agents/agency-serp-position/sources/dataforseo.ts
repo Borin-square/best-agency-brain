@@ -1,8 +1,10 @@
 // DataForSEO SERP API — Google Organic Live (Regular).
 // Docs: https://docs.dataforseo.com/v3/serp/google/organic/live/regular/
 //
-// Endpoint accetta batch di task (max 100/POST) e ritorna per ognuno la
-// SERP organica top-100 con rank_absolute, url, title, domain.
+// Ritorna la SERP organica top-100 con rank_absolute, url, title, domain.
+// Sul tier free/trial DataForSEO limita a 1 task per POST body ("You can
+// set only one task at a time"), quindi facciamo N POST paralleli con
+// concorrenza limitata a CONCURRENCY.
 //
 // Auth: Basic (base64(login:password)). Env: DATAFORSEO_LOGIN + _PASSWORD.
 
@@ -12,6 +14,7 @@ const LOCATION_CODE_ITALY = 2380;
 const LANGUAGE_CODE_IT = "it";
 const TARGET_DOMAIN = "miglioreagenzia.it";
 const DEFAULT_DEPTH = 100; // top-100 SERP
+const CONCURRENCY = 10; // request paralleli max verso DataForSEO
 
 export interface SerpTaskInput {
   keyword: string; // es. "Vanilla Marketing Ancona"
@@ -56,8 +59,9 @@ interface DfsResponse {
 }
 
 /**
- * Esegue un batch di ricerche SERP e ritorna la posizione di TARGET_DOMAIN
- * per ogni keyword. Un singolo POST per l'intero batch (max 100 task).
+ * Esegue N ricerche SERP e ritorna la posizione di TARGET_DOMAIN per ogni
+ * keyword. Un POST per task (limitazione tier free DataForSEO), N POST
+ * paralleli con concorrenza CONCURRENCY.
  */
 export async function fetchSerpBatch(
   inputs: SerpTaskInput[],
@@ -68,21 +72,47 @@ export async function fetchSerpBatch(
     throw new Error("DATAFORSEO_LOGIN or DATAFORSEO_PASSWORD missing");
   }
   if (inputs.length === 0) return [];
-  if (inputs.length > 100) {
-    throw new Error(`DataForSEO batch max 100 tasks, got ${inputs.length}`);
-  }
 
   const auth = Buffer.from(`${login}:${password}`).toString("base64");
+  const results: SerpTaskResult[] = [];
 
-  // Costruisce array di task per il POST. Usiamo l'id di DataForSEO
-  // (parametro `tag`) per remappare la risposta al refId (agency_id).
-  const body = inputs.map((input) => ({
-    keyword: input.keyword,
-    language_code: LANGUAGE_CODE_IT,
-    location_code: LOCATION_CODE_ITALY,
-    depth: DEFAULT_DEPTH,
-    tag: input.refId, // custom identifier ritornato nella risposta
-  }));
+  // Chunking per limitare concorrenza (evita rate-limit + rispetta tier).
+  for (let i = 0; i < inputs.length; i += CONCURRENCY) {
+    const chunk = inputs.slice(i, i + CONCURRENCY);
+    const settled = await Promise.allSettled(
+      chunk.map((input) => fetchSingleTask(input, auth)),
+    );
+    for (const [idx, s] of settled.entries()) {
+      if (s.status === "fulfilled") {
+        results.push(s.value);
+      } else {
+        results.push({
+          refId: chunk[idx].refId,
+          keyword: chunk[idx].keyword,
+          position: null,
+          url: null,
+          error: s.reason instanceof Error ? s.reason.message : String(s.reason),
+        });
+      }
+    }
+  }
+
+  return results;
+}
+
+async function fetchSingleTask(
+  input: SerpTaskInput,
+  auth: string,
+): Promise<SerpTaskResult> {
+  const body = [
+    {
+      keyword: input.keyword,
+      language_code: LANGUAGE_CODE_IT,
+      location_code: LOCATION_CODE_ITALY,
+      depth: DEFAULT_DEPTH,
+      tag: input.refId,
+    },
+  ];
 
   const res = await fetch(API_URL, {
     method: "POST",
@@ -95,60 +125,43 @@ export async function fetchSerpBatch(
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`DataForSEO HTTP ${res.status}: ${text.slice(0, 300)}`);
+    throw new Error(`HTTP ${res.status}: ${text.slice(0, 200)}`);
   }
 
   const json = (await res.json()) as DfsResponse;
   if (json.status_code >= 40000) {
-    throw new Error(`DataForSEO error ${json.status_code}: ${json.status_message}`);
+    throw new Error(`API error ${json.status_code}: ${json.status_message}`);
   }
 
-  // Mappa risposte per refId (via tag). Attenzione: il tag torna dentro `data.tag`.
-  const results: SerpTaskResult[] = [];
-  const seenRefIds = new Set<string>();
-
-  for (const task of json.tasks ?? []) {
-    // DataForSEO ritorna `data.tag` con il valore che abbiamo passato.
-    const refId = (task.data as { tag?: string } | undefined)?.tag ?? "";
-    const keyword = task.data?.keyword ?? "";
-
-    if (task.status_code >= 40000) {
-      results.push({
-        refId,
-        keyword,
-        position: null,
-        url: null,
-        error: task.status_message,
-      });
-      seenRefIds.add(refId);
-      continue;
-    }
-
-    const items = task.result?.[0]?.items ?? [];
-    const match = findTargetPosition(items);
-    results.push({
-      refId,
-      keyword,
-      position: match?.position ?? null,
-      url: match?.url ?? null,
-    });
-    seenRefIds.add(refId);
+  const task = json.tasks?.[0];
+  if (!task) {
+    return {
+      refId: input.refId,
+      keyword: input.keyword,
+      position: null,
+      url: null,
+      error: "no_task_returned",
+    };
   }
 
-  // Aggiungi missing per gli input che non hanno ricevuto risposta (safety)
-  for (const input of inputs) {
-    if (!seenRefIds.has(input.refId)) {
-      results.push({
-        refId: input.refId,
-        keyword: input.keyword,
-        position: null,
-        url: null,
-        error: "no_task_returned",
-      });
-    }
+  if (task.status_code >= 40000) {
+    return {
+      refId: input.refId,
+      keyword: input.keyword,
+      position: null,
+      url: null,
+      error: task.status_message,
+    };
   }
 
-  return results;
+  const items = task.result?.[0]?.items ?? [];
+  const match = findTargetPosition(items);
+  return {
+    refId: input.refId,
+    keyword: input.keyword,
+    position: match?.position ?? null,
+    url: match?.url ?? null,
+  };
 }
 
 /**

@@ -1,8 +1,11 @@
 import type { AgentContext, AgentResult } from "../framework";
 import { fetchSerpBatch, type SerpTaskInput, type SerpTaskResult } from "./sources/dataforseo";
 
-const DEFAULT_BATCH_SIZE = 100; // max DataForSEO POST size
-const MAX_BATCH_SIZE = 100;
+// DataForSEO tier free = 1 task per POST → facciamo N POST paralleli
+// (concurrency 10 in dataforseo.ts). Con batch=30 e 10s per wave = ~30s
+// totali, ampiamente dentro maxDuration=300s.
+const DEFAULT_BATCH_SIZE = 30;
+const MAX_BATCH_SIZE = 200;
 const DEFAULT_REFRESH_DAYS = 6;
 
 interface AgencyRow {
