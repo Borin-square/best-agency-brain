@@ -29,6 +29,12 @@ interface RunItem {
   agencies: { title: string; citta: string | null } | null;
 }
 
+function renderPosition(pos: unknown): string {
+  if (pos === null || pos === undefined) return "not found";
+  if (typeof pos === "number") return `#${pos}`;
+  return String(pos);
+}
+
 export default function RunDetailPage({
   params,
 }: {
@@ -49,6 +55,9 @@ export default function RunDetailPage({
   if (!data) return <p className="muted">Run non trovato.</p>;
 
   const { run, items } = data;
+  const isMatriceSerp = run.agent_id === "matrice-serp-position";
+  const itemLabel = isMatriceSerp ? "Listing" : "Agenzia";
+  const itemLabelPlural = isMatriceSerp ? "Listing processati" : "Agenzie processate";
 
   return (
     <div>
@@ -97,14 +106,14 @@ export default function RunDetailPage({
         </div>
       </div>
 
-      <h2 style={{ marginTop: 28 }}>Agenzie processate ({items.length})</h2>
+      <h2 style={{ marginTop: 28 }}>{itemLabelPlural} ({items.length})</h2>
       <div className="cd" style={{ padding: 0 }}>
         <table className="tbl">
           <thead>
             <tr>
-              <th>Agenzia</th>
+              <th>{itemLabel}</th>
               <th>Status</th>
-              <th>Campi aggiornati</th>
+              <th>{isMatriceSerp ? "Risultato" : "Campi aggiornati"}</th>
               <th>Fonti</th>
               <th>Errore</th>
             </tr>
@@ -120,13 +129,68 @@ export default function RunDetailPage({
               items.map((it) => (
                 <tr key={it.id}>
                   <td>
-                    <div style={{ fontWeight: 500 }}>
-                      {it.agencies?.title ?? "(agenzia rimossa)"}
-                    </div>
-                    {it.agencies?.citta && (
-                      <div className="muted" style={{ marginTop: 2 }}>
-                        {it.agencies.citta}
-                      </div>
+                    {isMatriceSerp ? (
+                      (() => {
+                        const src = (it.sources_hit ?? {}) as {
+                          query?: unknown;
+                          skill_slug?: unknown;
+                          area_slug?: unknown;
+                          area_type?: unknown;
+                        };
+                        const query = typeof src.query === "string" ? src.query : null;
+                        const skill = typeof src.skill_slug === "string" ? src.skill_slug : null;
+                        const area = typeof src.area_slug === "string" ? src.area_slug : null;
+                        const areaType = typeof src.area_type === "string" ? src.area_type : null;
+                        return (
+                          <>
+                            <div style={{ fontWeight: 500 }}>
+                              {query ?? "(cella sconosciuta)"}
+                            </div>
+                            {(skill || area) && (
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 4 }}>
+                                {skill && (
+                                  <code
+                                    style={{
+                                      fontSize: 10,
+                                      padding: "2px 6px",
+                                      background: "var(--bg3)",
+                                      borderRadius: 3,
+                                      color: "var(--fg2)",
+                                    }}
+                                  >
+                                    {skill}
+                                  </code>
+                                )}
+                                {area && (
+                                  <code
+                                    style={{
+                                      fontSize: 10,
+                                      padding: "2px 6px",
+                                      background: "var(--bg3)",
+                                      borderRadius: 3,
+                                      color: "var(--fg2)",
+                                    }}
+                                  >
+                                    {area}
+                                    {areaType ? ` (${areaType})` : ""}
+                                  </code>
+                                )}
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()
+                    ) : (
+                      <>
+                        <div style={{ fontWeight: 500 }}>
+                          {it.agencies?.title ?? "(agenzia rimossa)"}
+                        </div>
+                        {it.agencies?.citta && (
+                          <div className="muted" style={{ marginTop: 2 }}>
+                            {it.agencies.citta}
+                          </div>
+                        )}
+                      </>
                     )}
                   </td>
                   <td>
@@ -143,7 +207,44 @@ export default function RunDetailPage({
                     </span>
                   </td>
                   <td>
-                    {it.fields_updated && it.fields_updated.length > 0 ? (
+                    {isMatriceSerp ? (
+                      it.status === "success" ? (
+                        (() => {
+                          const src = (it.sources_hit ?? {}) as {
+                            position?: unknown;
+                            agency_count?: unknown;
+                          };
+                          const pos = renderPosition(src.position);
+                          const isFound = typeof src.position === "number";
+                          const count =
+                            typeof src.agency_count === "number" ? src.agency_count : null;
+                          return (
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
+                              <span
+                                style={{
+                                  fontSize: 12,
+                                  fontWeight: 600,
+                                  padding: "2px 8px",
+                                  background: isFound ? "var(--bg3)" : "transparent",
+                                  border: isFound ? "none" : "1px dashed var(--fg3)",
+                                  borderRadius: 3,
+                                  color: isFound ? "var(--fg1)" : "var(--fg3)",
+                                }}
+                              >
+                                {pos}
+                              </span>
+                              {count !== null && (
+                                <span className="muted" style={{ fontSize: 11 }}>
+                                  · {count} agenzie
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()
+                      ) : (
+                        <span className="muted">—</span>
+                      )
+                    ) : it.fields_updated && it.fields_updated.length > 0 ? (
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
                         {it.fields_updated.map((f) => (
                           <code
