@@ -144,6 +144,12 @@ interface Agency {
   last_verified_at: string | null;
   quality_gate_score: number | null;
 
+  // SERP position tracking
+  serp_position: number | null;
+  serp_query: string | null;
+  serp_url: string | null;
+  serp_checked_at: string | null;
+
   created_at: string;
   updated_at: string;
 }
@@ -803,6 +809,41 @@ export default function AgencyDetailPage({ params }: { params: Promise<{ id: str
         <div style={{ gridColumn: "1 / -1" }}>
           <Field label="Meta description" value={agency.meta_description} />
         </div>
+      </Section>
+
+      <Section title="SERP tracking">
+        <Field
+          label="Posizione miglioreagenzia.it"
+          value={
+            agency.serp_position != null ? (
+              <span
+                className={`bd-badge ${
+                  agency.serp_position <= 10
+                    ? "bd-success"
+                    : agency.serp_position <= 30
+                      ? "bd-warn"
+                      : "bd-muted"
+                }`}
+              >
+                #{agency.serp_position}
+              </span>
+            ) : agency.serp_checked_at ? (
+              <span className="bd-badge bd-muted">Fuori top 100</span>
+            ) : null
+          }
+        />
+        <Field label="Query usata" value={agency.serp_query} />
+        <div style={{ gridColumn: "1 / -1" }}>
+          <Field label="URL rankata" value={link(agency.serp_url)} />
+        </div>
+        <Field
+          label="Ultima verifica SERP"
+          value={
+            agency.serp_checked_at
+              ? new Date(agency.serp_checked_at).toLocaleString("it-IT")
+              : null
+          }
+        />
       </Section>
 
       <Section title="Workflow esteso">

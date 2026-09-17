@@ -122,6 +122,12 @@ const CSV_HEADERS = [
 
   // Portfolio images (jsonb da agency-visual-enrichment)
   "Portfolio JSON",
+
+  // SERP position tracking (agent agency-serp-position)
+  "SERP position",
+  "SERP query",
+  "SERP url",
+  "SERP checked at",
 ] as const;
 
 function csvEscape(v: unknown): string {
@@ -273,6 +279,12 @@ function rowToCsv(a: Record<string, unknown>, featuresByAgency: Map<string, stri
 
     // Portfolio images (jsonb)
     a.portfolio,
+
+    // SERP position tracking
+    a.serp_position,
+    a.serp_query,
+    a.serp_url,
+    a.serp_checked_at,
   ];
   return values.map(csvEscape).join(",");
 }
