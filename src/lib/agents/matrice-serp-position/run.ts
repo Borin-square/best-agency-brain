@@ -3,6 +3,7 @@ import {
   fetchSerpBatch,
   type SerpTaskInput,
 } from "../agency-serp-position/sources/dataforseo";
+import { fetchKeywordVolumeBatch } from "./sources/keyword-volume";
 
 const DEFAULT_BATCH_SIZE = 30;
 const MAX_BATCH_SIZE = 200;
@@ -280,6 +281,22 @@ export async function runMatriceSerpPosition(ctx: AgentContext): Promise<AgentRe
     };
   }
 
+  // Fetch volume + CPC per tutte le keyword usate (indipendente dal fatto che
+  // miglioreagenzia sia posizionata o meno — servono per il pricing anche di
+  // celle "fuori top 100"). Se fallisce, proseguiamo senza volume: la SERP è
+  // già stata pagata e i dati posizione non vanno persi.
+  let volumeByKw = new Map<string, { search_volume: number | null; cpc: number | null }>();
+  try {
+    const keywords = inputs.map((i) => i.keyword);
+    const vol = await fetchKeywordVolumeBatch(keywords);
+    volumeByKw = vol;
+    ctx.log("volume_completed", { count: vol.size });
+  } catch (err) {
+    ctx.log("volume_error", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
   const now = new Date().toISOString();
   let success = 0;
   let errorCount = 0;
@@ -317,6 +334,15 @@ export async function runMatriceSerpPosition(ctx: AgentContext): Promise<AgentRe
       buckets.notFound++;
     }
 
+    const vol = volumeByKw.get(cell.query.trim().toLowerCase()) ?? null;
+    const volumeFields = vol
+      ? {
+          search_volume: vol.search_volume,
+          cpc: vol.cpc,
+          volume_updated_at: now,
+        }
+      : {};
+
     // Upsert current state
     const { error: upErr } = await ctx.supabase
       .from("matrice_serp_positions")
@@ -331,6 +357,7 @@ export async function runMatriceSerpPosition(ctx: AgentContext): Promise<AgentRe
           url: result.url,
           provider: "dataforseo",
           checked_at: now,
+          ...volumeFields,
         },
         { onConflict: "domain_id,area_type,area_slug,skill_slug" },
       );
@@ -357,7 +384,13 @@ export async function runMatriceSerpPosition(ctx: AgentContext): Promise<AgentRe
       url: result.url,
       provider: "dataforseo",
       checked_at: now,
+      ...(vol
+        ? { search_volume: vol.search_volume, cpc: vol.cpc }
+        : {}),
     });
+
+    const fieldsUpdated = ["position", "url", "checked_at"];
+    if (vol) fieldsUpdated.push("search_volume", "cpc");
 
     await ctx.supabase.from("agent_run_items").insert({
       run_id: ctx.runId,
@@ -370,8 +403,11 @@ export async function runMatriceSerpPosition(ctx: AgentContext): Promise<AgentRe
         query: cell.query,
         position: result.position,
         agency_count: cell.agency_count,
+        ...(vol
+          ? { search_volume: vol.search_volume, cpc: vol.cpc }
+          : {}),
       },
-      fields_updated: ["position", "url", "checked_at"],
+      fields_updated: fieldsUpdated,
     });
 
     success++;

@@ -13,6 +13,7 @@ export const MAIN_NAV: NavItem[] = [
   { id: "quality", label: "Quality", href: "/quality", icon: "⚠" },
   { id: "competenze", label: "Competenze", href: "/competenze", icon: "◇" },
   { id: "listing", label: "Listing", href: "/listing", icon: "▦" },
+  { id: "pricelist", label: "Pricelist", href: "/pricelist", icon: "€" },
   { id: "agents", label: "Agents", href: "/agents", icon: "◈" },
   { id: "network", label: "Network", href: "/network", icon: "◐" },
   { id: "seo", label: "SEO", href: "/seo", icon: "↗" },
