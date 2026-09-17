@@ -96,7 +96,6 @@ const AGENCY_SELECT = [
   "seo_title",
   "meta_description",
   // Arrays
-  "competenze",
   "competenze_core",
   "competenze_principali",
   "altre_competenze",

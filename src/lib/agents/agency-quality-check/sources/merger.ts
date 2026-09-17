@@ -62,7 +62,6 @@ export interface AgencyForMerge {
   meta_description: string | null;
 
   // Array text[]
-  competenze: string[] | null;
   competenze_core: string[] | null;
   competenze_principali: string[] | null;
   altre_competenze: string[] | null;
@@ -114,7 +113,6 @@ const IMMUTABLE_FIELDS = new Set<string>([
 
 // Array text[] da mergere con concat + dedup (case-insensitive).
 const TEXT_ARRAY_FIELDS: Array<keyof AgencyForMerge> = [
-  "competenze",
   "competenze_core",
   "competenze_principali",
   "altre_competenze",
