@@ -10,6 +10,7 @@ export const MAIN_NAV: NavItem[] = [
   { id: "overview", label: "Overview", href: "/", icon: "◎" },
   { id: "agenzie", label: "Agenzie", href: "/agenzie", icon: "◫" },
   { id: "fields", label: "Fields", href: "/fields", icon: "≡" },
+  { id: "quality", label: "Quality", href: "/quality", icon: "⚠" },
   { id: "competenze", label: "Competenze", href: "/competenze", icon: "◇" },
   { id: "matrice", label: "Matrice", href: "/matrice", icon: "▦" },
   { id: "agents", label: "Agents", href: "/agents", icon: "◈" },
