@@ -114,6 +114,8 @@ export async function GET(req: NextRequest) {
   const industry = url.searchParams.get("industry")?.trim();
   const competenzaCore = url.searchParams.get("competenza_core")?.trim();
   const featured = url.searchParams.get("featured");
+  const serpMaxRaw = url.searchParams.get("serp_max_position");
+  const serpMax = serpMaxRaw ? parseInt(serpMaxRaw, 10) : NaN;
   const domainId = url.searchParams.get("domain_id")?.trim();
 
   const supabase = createServiceClient();
@@ -137,7 +139,7 @@ export async function GET(req: NextRequest) {
   let query = supabase
     .from("agencies")
     .select(
-      "id, wp_id, title, sito_web, email, telefono, citta, regioni, verifica, status_curatela, publish_status, competenze_core, competenze_principali, industries, audiences, min_project_budget, min_project_currency, google_rating, google_recensioni_count, match_confidence, last_enriched_at, last_verified_at",
+      "id, wp_id, title, sito_web, email, telefono, citta, regioni, verifica, status_curatela, publish_status, competenze_core, competenze_principali, industries, audiences, min_project_budget, min_project_currency, google_rating, google_recensioni_count, match_confidence, serp_position, serp_query, serp_url, serp_checked_at, last_enriched_at, last_verified_at",
       { count: "exact" },
     )
     .order("wp_id", { ascending: true, nullsFirst: false });
@@ -163,6 +165,9 @@ export async function GET(req: NextRequest) {
   }
   if (industry) query = query.contains("industries", [industry]);
   if (competenzaCore) query = query.contains("competenze_core", [competenzaCore]);
+  if (!Number.isNaN(serpMax) && serpMax > 0) {
+    query = query.not("serp_position", "is", null).lte("serp_position", serpMax);
+  }
   if (featured === "yes" && featuredIdsFilter) {
     if (featuredIdsFilter.length === 0) {
       // Nessuna agenzia featured → risposta vuota

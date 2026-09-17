@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useDomain } from "@/components/DomainProvider";
 import ColumnChooser, {
@@ -54,6 +55,10 @@ interface AgencyRow {
   google_rating: number | null;
   google_recensioni_count: number | null;
   match_confidence: number | null;
+  serp_position: number | null;
+  serp_query: string | null;
+  serp_url: string | null;
+  serp_checked_at: string | null;
   last_enriched_at: string | null;
   last_verified_at: string | null;
 }
@@ -85,6 +90,7 @@ const COLUMNS: ColumnOption[] = [
   { key: "industries", label: "Industries", defaultVisible: false },
   { key: "audiences", label: "Audiences", defaultVisible: false },
   { key: "min_project_budget", label: "Budget minimo", defaultVisible: false },
+  { key: "serp_position", label: "SERP position", defaultVisible: false },
   { key: "arricchita", label: "Ultima arricchita", defaultVisible: true },
   { key: "last_verified_at", label: "Ultima verifica", defaultVisible: false },
 ];
@@ -120,8 +126,21 @@ export default function AgenziePage() {
   const [industry, setIndustry] = useState("");
   const [competenzaCore, setCompetenzaCore] = useState("");
   const [featured, setFeatured] = useState<"" | "yes" | "no">("");
+  const [serpMax, setSerpMax] = useState("");
 
   const [showAdvanced, setShowAdvanced] = useState(false);
+
+  // Auto-populate filtri da URL params (usato da Overview KPI card che
+  // linkano qui con ?serp_max=10 o ?serp_max=20). Se serp_max è presente,
+  // apre anche il pannello avanzato per rendere il filtro visibile.
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    const sm = searchParams.get("serp_max");
+    if (sm) {
+      setSerpMax(sm);
+      setShowAdvanced(true);
+    }
+  }, [searchParams]);
   const [showUpload, setShowUpload] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -197,6 +216,7 @@ export default function AgenziePage() {
     if (industry) params.set("industry", industry);
     if (competenzaCore) params.set("competenza_core", competenzaCore);
     if (featured) params.set("featured", featured);
+    if (serpMax) params.set("serp_max_position", serpMax);
     const res = await fetch(`/api/agencies?${params}`);
     if (res.ok) setList(await res.json());
   }, [
@@ -216,6 +236,7 @@ export default function AgenziePage() {
     industry,
     competenzaCore,
     featured,
+    serpMax,
     currentDomainId,
   ]);
 
@@ -253,7 +274,8 @@ export default function AgenziePage() {
     Number(!!minRating) +
     Number(!!industry) +
     Number(!!competenzaCore) +
-    Number(!!featured);
+    Number(!!featured) +
+    Number(!!serpMax);
 
   const activeAdvancedFilters =
     Number(!!statusCuratela) +
@@ -266,7 +288,8 @@ export default function AgenziePage() {
     Number(!!minRating) +
     Number(!!industry) +
     Number(!!competenzaCore) +
-    Number(!!featured);
+    Number(!!featured) +
+    Number(!!serpMax);
 
   function resetFilters() {
     setQ("");
@@ -284,6 +307,7 @@ export default function AgenziePage() {
     setIndustry("");
     setCompetenzaCore("");
     setFeatured("");
+    setSerpMax("");
     setPage(1);
   }
 
@@ -932,6 +956,22 @@ export default function AgenziePage() {
               ]}
               placeholder="Indifferente"
             />
+            <FilterSelect
+              label="SERP position"
+              value={serpMax}
+              onChange={(v) => {
+                setSerpMax(v);
+                setPage(1);
+              }}
+              options={[
+                { value: "3", label: "Top 3" },
+                { value: "10", label: "Top 10" },
+                { value: "20", label: "Top 20" },
+                { value: "50", label: "Top 50" },
+                { value: "100", label: "Top 100" },
+              ]}
+              placeholder="Qualsiasi"
+            />
           </div>
         </div>
       )}
@@ -1191,6 +1231,30 @@ function renderCell(key: string, a: AgencyRow): React.ReactNode {
         </span>
       ) : (
         <Dash />
+      );
+    case "serp_position":
+      if (a.serp_position == null) {
+        return a.serp_checked_at ? (
+          <span className="bd-badge bd-muted" title="Fuori top 100 all'ultima check">
+            &gt;100
+          </span>
+        ) : (
+          <Dash />
+        );
+      }
+      return (
+        <span
+          className={`bd-badge ${
+            a.serp_position <= 10
+              ? "bd-success"
+              : a.serp_position <= 30
+                ? "bd-warn"
+                : "bd-muted"
+          }`}
+          title={a.serp_query ?? undefined}
+        >
+          #{a.serp_position}
+        </span>
       );
     case "arricchita":
       return (

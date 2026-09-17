@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useDomain } from "@/components/DomainProvider";
 
@@ -57,12 +58,14 @@ export default function OverviewPage() {
           value={stats?.top10 ?? null}
           highlight={stats && stats.top10 > 0 ? "success" : undefined}
           hint="miglioreagenzia.it in posizione 1-10 per la query nome+città"
+          href="/agenzie?serp_max=10"
         />
         <KpiCard
           label="Top 20 SERP"
           value={stats?.top20 ?? null}
           highlight={stats && stats.top20 > 0 ? "info" : undefined}
           hint="miglioreagenzia.it in posizione 1-20"
+          href="/agenzie?serp_max=20"
         />
         <KpiCard
           label="SERP controllate"
@@ -88,11 +91,13 @@ function KpiCard({
   value,
   highlight,
   hint,
+  href,
 }: {
   label: string;
   value: number | string | null;
   highlight?: "success" | "info" | "warn";
   hint?: string;
+  href?: string;
 }) {
   const color =
     highlight === "success"
@@ -102,9 +107,13 @@ function KpiCard({
         : highlight === "warn"
           ? "var(--org, #f59e0b)"
           : "var(--fg)";
-  return (
-    <div className="cd" title={hint}>
-      <div className="lb">{label}</div>
+
+  const inner = (
+    <>
+      <div className="lb">
+        {label}
+        {href && <span style={{ marginLeft: 6, color: "var(--fg3)", fontSize: 10 }}>→</span>}
+      </div>
       <div style={{ fontSize: 24, fontWeight: 600, color }}>
         {value === null || value === undefined ? "—" : value}
       </div>
@@ -113,6 +122,37 @@ function KpiCard({
           {hint}
         </div>
       )}
+    </>
+  );
+
+  if (href) {
+    return (
+      <Link
+        href={href}
+        className="cd"
+        title={hint}
+        style={{
+          display: "block",
+          textDecoration: "none",
+          color: "inherit",
+          cursor: "pointer",
+          transition: "border-color .15s",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.borderColor = "var(--accent, #3b82f6)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.borderColor = "";
+        }}
+      >
+        {inner}
+      </Link>
+    );
+  }
+
+  return (
+    <div className="cd" title={hint}>
+      {inner}
     </div>
   );
 }
