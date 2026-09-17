@@ -1,13 +1,20 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useDomain } from "@/components/DomainProvider";
 import ColumnChooser, {
   loadColumnsFromStorage,
   type ColumnOption,
 } from "@/components/ColumnChooser";
+
+// Legge un query param dall'URL corrente (client-only). Usato come
+// initializer di useState per evitare race condition tra primo fetch
+// vuoto e secondo fetch con filtro applicato via useEffect.
+function readUrlParam(name: string): string {
+  if (typeof window === "undefined") return "";
+  return new URLSearchParams(window.location.search).get(name) ?? "";
+}
 
 interface AgentMeta {
   id: string;
@@ -126,21 +133,12 @@ export default function AgenziePage() {
   const [industry, setIndustry] = useState("");
   const [competenzaCore, setCompetenzaCore] = useState("");
   const [featured, setFeatured] = useState<"" | "yes" | "no">("");
-  const [serpMax, setSerpMax] = useState("");
 
-  const [showAdvanced, setShowAdvanced] = useState(false);
-
-  // Auto-populate filtri da URL params (usato da Overview KPI card che
-  // linkano qui con ?serp_max=10 o ?serp_max=20). Se serp_max è presente,
-  // apre anche il pannello avanzato per rendere il filtro visibile.
-  const searchParams = useSearchParams();
-  useEffect(() => {
-    const sm = searchParams.get("serp_max");
-    if (sm) {
-      setSerpMax(sm);
-      setShowAdvanced(true);
-    }
-  }, [searchParams]);
+  // serpMax e showAdvanced inizializzati dall'URL al primo render (client)
+  // per evitare race: il primo fetch parte già con il filtro corretto se
+  // la pagina è aperta da Overview con ?serp_max=10|20.
+  const [serpMax, setSerpMax] = useState(() => readUrlParam("serp_max"));
+  const [showAdvanced, setShowAdvanced] = useState(() => !!readUrlParam("serp_max"));
   const [showUpload, setShowUpload] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [creating, setCreating] = useState(false);
