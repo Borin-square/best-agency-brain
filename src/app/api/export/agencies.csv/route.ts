@@ -128,6 +128,18 @@ const CSV_HEADERS = [
   "SERP query",
   "SERP url",
   "SERP checked at",
+
+  // Visual (loghi, foto team, case studies, portfolio meta)
+  // Popolati da agency-visual-enrichment. logo_url / photos / case_studies
+  // erano già in DB ma non esportati: aggiunti qui in coda (retrocompat WP
+  // All Import: le mappature colonne pre-esistenti non si spostano).
+  "Logo URL",
+  "Logo meta JSON",
+  "Foto team JSON",
+  "Case studies JSON",
+  "Google Partner cert",
+  "Visual enrichment status",
+  "Visual enriched at",
 ] as const;
 
 function csvEscape(v: unknown): string {
@@ -168,7 +180,10 @@ function competenzeUnion(a: Record<string, unknown>): string[] {
 function rowToCsv(a: Record<string, unknown>, featuresByAgency: Map<string, string>): string {
   const values = [
     // ---- Colonne legacy (retrocompat mappature WP All Import esistenti) ----
-    a.wp_id,
+    // ID: fallback su uuid interno se wp_id è null → WP All Import ha sempre
+    // un identificatore univoco per matchare la riga al post (evita che più
+    // agenzie nuove con wp_id vuoto collassino sullo stesso post).
+    a.wp_id ?? a.id,
     a.title,
     a.content,
     competenzeUnion(a),
@@ -285,6 +300,15 @@ function rowToCsv(a: Record<string, unknown>, featuresByAgency: Map<string, stri
     a.serp_query,
     a.serp_url,
     a.serp_checked_at,
+
+    // Visual (loghi + foto team + case studies + partner cert)
+    a.logo_url,
+    a.logo_meta,
+    a.photos,
+    a.case_studies,
+    a.google_partner_cert,
+    a.visual_enrichment_status,
+    a.visual_enriched_at,
   ];
   return values.map(csvEscape).join(",");
 }
