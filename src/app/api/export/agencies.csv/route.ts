@@ -163,13 +163,16 @@ function computeStato(a: Record<string, unknown>): "verificata" | "arricchita" |
 // WP conosce solo la colonna flat "Competenze": la ricomponiamo unendo i 3
 // gruppi in ordine di importanza (core → principali → altre), dedup preservando
 // l'ordine. Cap totale a 17 (2+5+10).
-function competenzeUnion(a: Record<string, unknown>): string[] {
-  const core = Array.isArray(a.competenze_core) ? (a.competenze_core as string[]) : [];
-  const pri = Array.isArray(a.competenze_principali) ? (a.competenze_principali as string[]) : [];
-  const alt = Array.isArray(a.altre_competenze) ? (a.altre_competenze as string[]) : [];
+function filterByAllowlist(arr: unknown, allowed: Set<string>): string[] | null {
+  if (!Array.isArray(arr) || arr.length === 0) return null;
+  const filtered = (arr as string[]).filter((s) => allowed.has(s));
+  return filtered.length > 0 ? filtered : null;
+}
+
+function competenzeUnion(core: string[] | null, pri: string[] | null, alt: string[] | null): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
-  for (const v of [...core, ...pri, ...alt]) {
+  for (const v of [...(core ?? []), ...(pri ?? []), ...(alt ?? [])]) {
     if (!v || seen.has(v)) continue;
     seen.add(v);
     out.push(v);
@@ -177,7 +180,16 @@ function competenzeUnion(a: Record<string, unknown>): string[] {
   return out;
 }
 
-function rowToCsv(a: Record<string, unknown>, featuresByAgency: Map<string, string>): string {
+function rowToCsv(
+  a: Record<string, unknown>,
+  featuresByAgency: Map<string, string>,
+  allowedByDomain: Map<string, Set<string>>,
+): string {
+  const allowed = allowedByDomain.get(a.domain_id as string) ?? new Set<string>();
+  const core = filterByAllowlist(a.competenze_core, allowed);
+  const principali = filterByAllowlist(a.competenze_principali, allowed);
+  const altre = filterByAllowlist(a.altre_competenze, allowed);
+
   const values = [
     // ---- Colonne legacy (retrocompat mappature WP All Import esistenti) ----
     // ID: fallback su uuid interno se wp_id è null → WP All Import ha sempre
@@ -186,10 +198,10 @@ function rowToCsv(a: Record<string, unknown>, featuresByAgency: Map<string, stri
     a.wp_id ?? a.id,
     a.title,
     a.content,
-    competenzeUnion(a),
-    a.competenze_core,
-    a.competenze_principali,
-    a.altre_competenze,
+    competenzeUnion(core, principali, altre),
+    core,
+    principali,
+    altre,
     a.caratteristiche,
     a.aree,
     a.citta,
@@ -370,7 +382,19 @@ export async function GET(req: Request) {
     featuresByAgency.set(row.agency_id, cur ? `${cur}|${entry}` : entry);
   }
 
-  const lines = [CSV_HEADERS.join(","), ...all.map((a) => rowToCsv(a, featuresByAgency))];
+  // Fetch allowlist competenze per dominio → filtra i 3 gruppi prima di esportare
+  let skillsQuery = supabase.from("agency_skills").select("domain_id, slug");
+  if (domainId) skillsQuery = skillsQuery.eq("domain_id", domainId);
+  const { data: skillRows, error: sErr } = await skillsQuery;
+  if (sErr) return NextResponse.json({ error: sErr.message }, { status: 500 });
+  const allowedByDomain = new Map<string, Set<string>>();
+  for (const r of skillRows ?? []) {
+    const s = r as { domain_id: string; slug: string };
+    if (!allowedByDomain.has(s.domain_id)) allowedByDomain.set(s.domain_id, new Set());
+    allowedByDomain.get(s.domain_id)!.add(s.slug);
+  }
+
+  const lines = [CSV_HEADERS.join(","), ...all.map((a) => rowToCsv(a, featuresByAgency, allowedByDomain))];
   const csv = "\uFEFF" + lines.join("\n"); // BOM per Excel/WP All Import
 
   return new Response(csv, {
