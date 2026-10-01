@@ -19,6 +19,8 @@ export interface PlacesResult {
   website: string | null;
   category: string | null;
   photo_name: string | null;         // formato: "places/{id}/photos/{ref}"
+  lat: number | null;
+  lng: number | null;
   match_confidence: number;          // 0-1 (1 = dominio matcha esattamente)
 }
 
@@ -26,6 +28,7 @@ const FIELD_MASK = [
   "places.id",
   "places.displayName",
   "places.formattedAddress",
+  "places.location",
   "places.rating",
   "places.userRatingCount",
   "places.nationalPhoneNumber",
@@ -95,6 +98,7 @@ interface PlaceApiItem {
   id: string;
   displayName?: { text?: string };
   formattedAddress?: string;
+  location?: { latitude?: number; longitude?: number };
   rating?: number;
   userRatingCount?: number;
   nationalPhoneNumber?: string;
@@ -118,6 +122,8 @@ function toResult(p: PlaceApiItem, name: string, confidence: number): PlacesResu
     website: p.websiteUri ?? null,
     category,
     photo_name: p.photos?.[0]?.name ?? null,
+    lat: p.location?.latitude ?? null,
+    lng: p.location?.longitude ?? null,
     match_confidence: confidence,
   };
 }

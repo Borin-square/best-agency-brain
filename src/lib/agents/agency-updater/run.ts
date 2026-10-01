@@ -98,6 +98,7 @@ interface AgencyRow {
   declared_methodology: string | null;
   faq: unknown | null;
 
+  manual_fields: string[] | null;
   domain_id: string;
 }
 
@@ -109,7 +110,11 @@ function isEmpty(v: unknown): boolean {
 }
 
 const AGENCY_SELECT =
-  "id, wp_id, title, citta, sito_web, partita_iva, google_place_id, google_sito, last_enriched_at, descrizione_breve, content, competenze_core, competenze_principali, altre_competenze, caratteristiche, anno_di_fondazione, dimensione_team, lingue, fascia_di_prezzo, email, telefono, linkedin, instagram, behance, indirizzo_completo, alternate_names, founder_leader, deliverables, platforms_tech, industries, audiences, ideal_client_sizes, engagement_models, min_project_budget, min_project_currency, typical_project_min, typical_project_max, pricing_models, differentiators, declared_methodology, faq, domain_id";
+  "id, wp_id, title, citta, sito_web, partita_iva, google_place_id, google_sito, last_enriched_at, descrizione_breve, content, competenze_core, competenze_principali, altre_competenze, caratteristiche, anno_di_fondazione, dimensione_team, lingue, fascia_di_prezzo, email, telefono, linkedin, instagram, behance, indirizzo_completo, alternate_names, founder_leader, deliverables, platforms_tech, industries, audiences, ideal_client_sizes, engagement_models, min_project_budget, min_project_currency, typical_project_min, typical_project_max, pricing_models, differentiators, declared_methodology, faq, manual_fields, domain_id";
+
+function isLocked(field: string, agency: AgencyRow): boolean {
+  return (agency.manual_fields ?? []).includes(field);
+}
 
 async function pickAgencies(
   ctx: AgentContext,
@@ -328,8 +333,11 @@ export async function runAgencyUpdater(ctx: AgentContext): Promise<AgentResult> 
         ["rating", "google_rating"],
         ["reviews_count", "google_recensioni_count"],
         ["photo_name", "google_foto_url"],
+        ["lat", "lat"],
+        ["lng", "lng"],
       ];
       for (const [src, dbCol] of map) {
+        if (isLocked(dbCol, agency)) continue;
         const v = placesData[src];
         if (v !== null && v !== undefined && v !== "") {
           updateFields[dbCol] = v;
@@ -358,8 +366,10 @@ export async function runAgencyUpdater(ctx: AgentContext): Promise<AgentResult> 
         }
       }
       // … ma sovrascrive sempre descrizione_breve e content quando l'LLM
-      // produce contenuti (obiettivo: descrizioni di qualità uniforme).
+      // produce contenuti (obiettivo: descrizioni di qualità uniforme),
+      // salvo che il campo sia stato modificato manualmente.
       for (const field of LLM_ALWAYS_OVERWRITE) {
+        if (isLocked(field, agency)) continue;
         const newValue = llmData[field];
         if (!isEmpty(newValue)) {
           updateFields[field] = newValue;
@@ -368,41 +378,35 @@ export async function runAgencyUpdater(ctx: AgentContext): Promise<AgentResult> 
       }
     }
 
-    // Competenze: l'agent è authority. Quando l'LLM produce una classificazione
-    // (già deduplicata cross-gruppo da classifyCompetenze), sovrascrive sempre
-    // tutti e 3 i gruppi. La curatela manuale verrà protetta in futuro dal
-    // flag verifica='verified' (out of scope qui).
+    // Competenze: l'agent è authority per campo, salvo lock manuale.
     if (classified) {
       const currCore = agency.competenze_core ?? [];
       const currPri = agency.competenze_principali ?? [];
       const currAlt = agency.altre_competenze ?? [];
       const eq = (a: string[], b: string[]) =>
         a.length === b.length && a.every((v, i) => v === b[i]);
-      if (!eq(classified.core, currCore)) {
+      if (!isLocked("competenze_core", agency) && !eq(classified.core, currCore)) {
         updateFields.competenze_core = classified.core;
         updated.push("competenze_core");
       }
-      if (!eq(classified.principali, currPri)) {
+      if (!isLocked("competenze_principali", agency) && !eq(classified.principali, currPri)) {
         updateFields.competenze_principali = classified.principali;
         updated.push("competenze_principali");
       }
-      if (!eq(classified.altre, currAlt)) {
+      if (!isLocked("altre_competenze", agency) && !eq(classified.altre, currAlt)) {
         updateFields.altre_competenze = classified.altre;
         updated.push("altre_competenze");
       }
     }
 
-    // Geo resolver: parsa google_indirizzo (o LLM indirizzo_completo come
-    // fallback) → override città/regione/aree in formato "Regione>Città".
-    // SEMPRE sovrascritto (le aree WP erano sbagliate).
+    // Geo resolver: parsa google_indirizzo → aree/citta/regioni, salvo lock manuale.
     const geoSource = placesData?.address ?? llmData?.indirizzo_completo ?? null;
     if (geoSource) {
       const geo = resolveItalianAddress(geoSource);
       if (geo) {
-        updateFields.aree = geo.aree;
-        updateFields.citta = geo.citta_slug;
-        updateFields.regioni = geo.regioni_slug;
-        updated.push("aree", "citta", "regioni");
+        if (!isLocked("aree", agency)) { updateFields.aree = geo.aree; updated.push("aree"); }
+        if (!isLocked("citta", agency)) { updateFields.citta = geo.citta_slug; updated.push("citta"); }
+        if (!isLocked("regioni", agency)) { updateFields.regioni = geo.regioni_slug; updated.push("regioni"); }
       }
     }
 

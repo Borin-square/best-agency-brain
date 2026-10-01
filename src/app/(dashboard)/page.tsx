@@ -1,8 +1,15 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useState } from "react";
 import { useDomain } from "@/components/DomainProvider";
+import type { MapPoint } from "@/components/AgenzieMap";
+
+const AgenzieMap = dynamic(
+  () => import("@/components/AgenzieMap").then((m) => m.AgenzieMap),
+  { ssr: false, loading: () => <div style={{ height: 420, background: "var(--bg3)", borderRadius: 8, border: "1px solid var(--bd)" }} /> },
+);
 
 interface Stats {
   total: number;
@@ -17,11 +24,19 @@ interface Stats {
 export default function OverviewPage() {
   const { currentDomainId, currentDomain } = useDomain();
   const [stats, setStats] = useState<Stats | null>(null);
+  const [mapPoints, setMapPoints] = useState<MapPoint[]>([]);
 
   const load = useCallback(async () => {
     if (!currentDomainId) return;
-    const res = await fetch(`/api/agencies/stats?domain_id=${currentDomainId}`);
-    if (res.ok) setStats(await res.json());
+    const [statsRes, mapRes] = await Promise.all([
+      fetch(`/api/agencies/stats?domain_id=${currentDomainId}`),
+      fetch(`/api/agencies/map?domain_id=${currentDomainId}`),
+    ]);
+    if (statsRes.ok) setStats(await statsRes.json());
+    if (mapRes.ok) {
+      const data = (await mapRes.json()) as { points: MapPoint[] };
+      setMapPoints(data.points);
+    }
   }, [currentDomainId]);
 
   useEffect(() => {
@@ -81,6 +96,33 @@ export default function OverviewPage() {
           }
           hint="Quota di controllate che rankano in top 10"
         />
+      </div>
+
+      {/* Mappa agenzie */}
+      <div className="cd" style={{ marginTop: 20, padding: 16 }}>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12 }}>
+          <div>
+            <div className="lb">Distribuzione geografica</div>
+            <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+              {mapPoints.length > 0
+                ? `${mapPoints.length} agenzie con coordinate · verde = verificata`
+                : "Nessuna coordinata disponibile"}
+            </div>
+          </div>
+          {mapPoints.length > 0 && (
+            <div style={{ display: "flex", gap: 12, fontSize: 11, color: "var(--fg3)" }}>
+              <span>
+                <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: "#22c55e", marginRight: 4 }} />
+                Verificata
+              </span>
+              <span>
+                <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: "#3b82f6", marginRight: 4 }} />
+                Non verificata
+              </span>
+            </div>
+          )}
+        </div>
+        <AgenzieMap points={mapPoints} />
       </div>
     </div>
   );
