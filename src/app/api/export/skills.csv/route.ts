@@ -1,22 +1,22 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase-server";
 
-// Export CSV della tassonomia competenze (agency_skills) con modificatore
-// per WP All Import. Ogni riga = una skill.
-//
-// Usato lato WP per generare le pagine di listing con qualificatore
-// corretto: "Migliori {modifier} {label} a {città}".
+// Export CSV della tassonomia competenze (agency_skills) per WP All Import.
+// Ogni riga = una skill. Colonne: Slug, Label, Modificatore, Sort order,
+// Descrizione, FAQ (JSON array [{domanda, risposta}]).
 
 const CSV_HEADERS = [
   "Slug",
   "Label",
   "Modificatore",
   "Sort order",
+  "Descrizione",
+  "FAQ",
 ] as const;
 
 function csvEscape(v: unknown): string {
   if (v === null || v === undefined) return "";
-  const s = String(v);
+  const s = typeof v === "string" ? v : JSON.stringify(v);
   if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
   return s;
 }
@@ -36,7 +36,7 @@ export async function GET(req: Request) {
   const supabase = createServiceClient();
   let q = supabase
     .from("agency_skills")
-    .select("slug, label, query_modifier, sort_order")
+    .select("slug, label, query_modifier, sort_order, descrizione, faq")
     .order("sort_order", { ascending: true })
     .order("label", { ascending: true });
   if (domainId) q = q.eq("domain_id", domainId);
@@ -49,12 +49,21 @@ export async function GET(req: Request) {
     label: string;
     query_modifier: string | null;
     sort_order: number | null;
+    descrizione: string | null;
+    faq: Array<{ domanda: string; risposta: string }> | null;
   }>;
 
   const lines = [
     CSV_HEADERS.join(","),
     ...rows.map((r) =>
-      [r.slug, r.label, r.query_modifier ?? "agenzia", r.sort_order ?? 0]
+      [
+        r.slug,
+        r.label,
+        r.query_modifier ?? "agenzia",
+        r.sort_order ?? 0,
+        r.descrizione ?? "",
+        r.faq && r.faq.length > 0 ? JSON.stringify(r.faq) : "",
+      ]
         .map(csvEscape)
         .join(","),
     ),

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useDomain, countryFlag } from "@/components/DomainProvider";
 
@@ -317,7 +318,16 @@ export default function CompetenzePage() {
               rows.map((s, i) => (
                 <tr key={s.id}>
                   <td className="muted">{i + 1}</td>
-                  <td>{s.label}</td>
+                  <td>
+                    <Link
+                      href={`/competenze/${s.id}`}
+                      style={{ color: "var(--fg)", textDecoration: "none", fontWeight: 500 }}
+                      onMouseEnter={(e) => (e.currentTarget.style.color = "var(--accent, #3b82f6)")}
+                      onMouseLeave={(e) => (e.currentTarget.style.color = "var(--fg)")}
+                    >
+                      {s.label}
+                    </Link>
+                  </td>
                   <td style={{ fontFamily: "ui-monospace, monospace", fontSize: 12, color: "var(--fg2)" }}>
                     {s.slug}
                   </td>

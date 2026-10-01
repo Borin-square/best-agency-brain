@@ -20,6 +20,14 @@ async function requireOwnerOrDev(req: NextRequest) {
   return { supabase };
 }
 
+export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const { id } = await ctx.params;
+  const supabase = createServiceClient();
+  const { data, error } = await supabase.from("agency_skills").select("*").eq("id", id).single();
+  if (error) return NextResponse.json({ error: error.message }, { status: 404 });
+  return NextResponse.json(data);
+}
+
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const auth = await requireOwnerOrDev(req);
   if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
@@ -36,8 +44,16 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     patch.sort_order = body.sort_order;
   if (typeof body.query_modifier === "string") {
     const qm = body.query_modifier.trim();
-    // stringa vuota → torna al default 'agenzia'; altrimenti valore custom
     patch.query_modifier = qm.length > 0 ? qm : "agenzia";
+  }
+  if (body.descrizione !== undefined) {
+    patch.descrizione =
+      typeof body.descrizione === "string" && body.descrizione.trim()
+        ? body.descrizione.trim()
+        : null;
+  }
+  if (Array.isArray(body.faq)) {
+    patch.faq = body.faq;
   }
 
   if (Object.keys(patch).length === 0) {
