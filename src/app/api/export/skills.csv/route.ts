@@ -2,15 +2,16 @@ import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase-server";
 
 // Export CSV della tassonomia competenze (agency_skills) per WP All Import.
-// Ogni riga = una skill. Colonne: Slug, Label, Modificatore, Sort order,
-// Descrizione, FAQ (JSON array [{domanda, risposta}]).
+// Formato allineato al file WP: Term ID (vuoto, match per slug), Term Name,
+// Term Slug, Definizione SEO — poi campi extra in coda.
 
 const CSV_HEADERS = [
-  "Slug",
-  "Label",
+  "Term ID",
+  "Term Name",
+  "Term Slug",
+  "Definizione SEO",
   "Modificatore",
   "Sort order",
-  "Descrizione",
   "FAQ",
   "Guide correlate",
 ] as const;
@@ -59,11 +60,12 @@ export async function GET(req: Request) {
     CSV_HEADERS.join(","),
     ...rows.map((r) =>
       [
-        r.slug,
-        r.label,
+        "",                          // Term ID — vuoto, WP All Import matcha per slug
+        r.label,                     // Term Name
+        r.slug,                      // Term Slug
+        r.descrizione ?? "",         // Definizione SEO
         r.query_modifier ?? "agenzia",
         r.sort_order ?? 0,
-        r.descrizione ?? "",
         r.faq && r.faq.length > 0 ? JSON.stringify(r.faq) : "",
         r.guide_correlate && r.guide_correlate.length > 0 ? JSON.stringify(r.guide_correlate) : "",
       ]
