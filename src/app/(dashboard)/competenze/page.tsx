@@ -321,11 +321,10 @@ export default function CompetenzePage() {
                   <td>
                     <Link
                       href={`/competenze/${s.id}`}
-                      style={{ color: "var(--fg)", textDecoration: "none", fontWeight: 500 }}
-                      onMouseEnter={(e) => (e.currentTarget.style.color = "var(--accent, #3b82f6)")}
-                      onMouseLeave={(e) => (e.currentTarget.style.color = "var(--fg)")}
+                      style={{ color: "var(--accent, #3b82f6)", textDecoration: "underline", textUnderlineOffset: 3, fontWeight: 500, display: "inline-flex", alignItems: "center", gap: 4 }}
                     >
                       {s.label}
+                      <span style={{ fontSize: 11, opacity: 0.6 }}>↗</span>
                     </Link>
                   </td>
                   <td style={{ fontFamily: "ui-monospace, monospace", fontSize: 12, color: "var(--fg2)" }}>
