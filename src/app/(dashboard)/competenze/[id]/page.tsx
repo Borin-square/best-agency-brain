@@ -9,6 +9,11 @@ interface FaqItem {
   risposta: string;
 }
 
+interface GuideItem {
+  titolo: string;
+  url: string;
+}
+
 interface Skill {
   id: string;
   domain_id: string;
@@ -18,6 +23,7 @@ interface Skill {
   query_modifier: string;
   descrizione: string | null;
   faq: FaqItem[];
+  guide_correlate: GuideItem[];
   created_at: string;
   updated_at: string;
 }
@@ -36,13 +42,17 @@ export default function SkillDetailPage() {
   const [modifier, setModifier] = useState("");
   const [descrizione, setDescrizione] = useState("");
   const [faq, setFaq] = useState<FaqItem[]>([]);
+  const [guide, setGuide] = useState<GuideItem[]>([]);
 
   const [savingBase, setSavingBase] = useState(false);
   const [savingFaq, setSavingFaq] = useState(false);
+  const [savingGuide, setSavingGuide] = useState(false);
   const [baseErr, setBaseErr] = useState<string | null>(null);
   const [faqErr, setFaqErr] = useState<string | null>(null);
+  const [guideErr, setGuideErr] = useState<string | null>(null);
   const [baseSaved, setBaseSaved] = useState(false);
   const [faqSaved, setFaqSaved] = useState(false);
+  const [guideSaved, setGuideSaved] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -59,6 +69,7 @@ export default function SkillDetailPage() {
     setModifier(data.query_modifier ?? "agenzia");
     setDescrizione(data.descrizione ?? "");
     setFaq(Array.isArray(data.faq) ? data.faq : []);
+    setGuide(Array.isArray(data.guide_correlate) ? data.guide_correlate : []);
     setLoading(false);
   }, [id]);
 
@@ -144,6 +155,52 @@ export default function SkillDetailPage() {
 
   function removeFaq(idx: number) {
     setFaq((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  async function saveGuideList() {
+    setGuideErr(null);
+    setSavingGuide(true);
+    try {
+      const h = await authHeader();
+      const res = await fetch(`/api/agency-skills/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...h },
+        body: JSON.stringify({ guide_correlate: guide }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.error ?? `HTTP ${res.status}`);
+      }
+      setGuideSaved(true);
+      setTimeout(() => setGuideSaved(false), 2000);
+    } catch (e) {
+      setGuideErr((e as Error).message);
+    } finally {
+      setSavingGuide(false);
+    }
+  }
+
+  function addGuide() {
+    setGuide((prev) => [...prev, { titolo: "", url: "" }]);
+  }
+
+  function updateGuide(idx: number, field: keyof GuideItem, value: string) {
+    setGuide((prev) => prev.map((item, i) => (i === idx ? { ...item, [field]: value } : item)));
+  }
+
+  function removeGuide(idx: number) {
+    setGuide((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  function moveGuide(idx: number, dir: -1 | 1) {
+    setGuide((prev) => {
+      const next = [...prev];
+      const swap = next[idx + dir];
+      if (!swap) return prev;
+      next[idx + dir] = next[idx];
+      next[idx] = swap;
+      return next;
+    });
   }
 
   function moveFaq(idx: number, dir: -1 | 1) {
@@ -277,6 +334,81 @@ export default function SkillDetailPage() {
           )}
         </div>
       </form>
+
+      {/* Guide correlate */}
+      <div className="cd" style={{ marginBottom: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+          <div>
+            <div className="lb" style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg3)" }}>
+              Guide correlate
+            </div>
+            <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+              Link a guide o approfondimenti utili per questa competenza.
+            </div>
+          </div>
+          <button className="btn" onClick={addGuide} style={{ fontSize: 12 }}>
+            + Aggiungi guida
+          </button>
+        </div>
+
+        {guide.length === 0 ? (
+          <p style={{ color: "var(--fg3)", fontSize: 13, marginBottom: 16 }}>
+            Nessuna guida correlata. Aggiungine una con il pulsante qui sopra.
+          </p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
+            {guide.map((item, idx) => (
+              <div
+                key={idx}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr auto",
+                  gap: 8,
+                  alignItems: "center",
+                  border: "1px solid var(--bd)",
+                  borderRadius: 6,
+                  padding: "10px 12px",
+                  background: "var(--bg3)",
+                }}
+              >
+                <div>
+                  <div className="lb" style={{ fontSize: 11, marginBottom: 4 }}>Testo</div>
+                  <input
+                    type="text"
+                    value={item.titolo}
+                    onChange={(e) => updateGuide(idx, "titolo", e.target.value)}
+                    placeholder="es. Come scegliere un'agenzia SEO"
+                    style={inputStyle}
+                  />
+                </div>
+                <div>
+                  <div className="lb" style={{ fontSize: 11, marginBottom: 4 }}>URL</div>
+                  <input
+                    type="url"
+                    value={item.url}
+                    onChange={(e) => updateGuide(idx, "url", e.target.value)}
+                    placeholder="https://…"
+                    style={{ ...inputStyle, fontFamily: "ui-monospace, monospace", fontSize: 12 }}
+                  />
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4, paddingTop: 18 }}>
+                  <button className="btn" onClick={() => moveGuide(idx, -1)} disabled={idx === 0} style={{ fontSize: 11, padding: "3px 6px" }}>↑</button>
+                  <button className="btn" onClick={() => moveGuide(idx, 1)} disabled={idx === guide.length - 1} style={{ fontSize: 11, padding: "3px 6px" }}>↓</button>
+                  <button className="btn" onClick={() => removeGuide(idx)} style={{ fontSize: 11, padding: "3px 6px", color: "var(--red)" }}>×</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <button className="btn btn-primary" onClick={saveGuideList} disabled={savingGuide}>
+            {savingGuide ? "Salvataggio…" : "Salva guide"}
+          </button>
+          {guideSaved && <span style={{ color: "var(--green, #22c55e)", fontSize: 13 }}>✓ Salvato</span>}
+          {guideErr && <span style={{ color: "var(--red)", fontSize: 13 }}>✗ {guideErr}</span>}
+        </div>
+      </div>
 
       {/* FAQ */}
       <div className="cd">

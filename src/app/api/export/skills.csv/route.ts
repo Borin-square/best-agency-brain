@@ -12,6 +12,7 @@ const CSV_HEADERS = [
   "Sort order",
   "Descrizione",
   "FAQ",
+  "Guide correlate",
 ] as const;
 
 function csvEscape(v: unknown): string {
@@ -36,7 +37,7 @@ export async function GET(req: Request) {
   const supabase = createServiceClient();
   let q = supabase
     .from("agency_skills")
-    .select("slug, label, query_modifier, sort_order, descrizione, faq")
+    .select("slug, label, query_modifier, sort_order, descrizione, faq, guide_correlate")
     .order("sort_order", { ascending: true })
     .order("label", { ascending: true });
   if (domainId) q = q.eq("domain_id", domainId);
@@ -51,6 +52,7 @@ export async function GET(req: Request) {
     sort_order: number | null;
     descrizione: string | null;
     faq: Array<{ domanda: string; risposta: string }> | null;
+    guide_correlate: Array<{ titolo: string; url: string }> | null;
   }>;
 
   const lines = [
@@ -63,6 +65,7 @@ export async function GET(req: Request) {
         r.sort_order ?? 0,
         r.descrizione ?? "",
         r.faq && r.faq.length > 0 ? JSON.stringify(r.faq) : "",
+        r.guide_correlate && r.guide_correlate.length > 0 ? JSON.stringify(r.guide_correlate) : "",
       ]
         .map(csvEscape)
         .join(","),

@@ -55,6 +55,9 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   if (Array.isArray(body.faq)) {
     patch.faq = body.faq;
   }
+  if (Array.isArray(body.guide_correlate)) {
+    patch.guide_correlate = body.guide_correlate;
+  }
 
   if (Object.keys(patch).length === 0) {
     return NextResponse.json({ error: "no_fields" }, { status: 400 });
