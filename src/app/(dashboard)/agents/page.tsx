@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { useDomain } from "@/components/DomainProvider";
 
 interface AgentSummary {
   id: string;
@@ -19,7 +20,17 @@ interface AgentSummary {
     interval_minutes: number;
     enabled: boolean;
     last_run_at: string | null;
+    batch_size: number | null;
+    refresh_days: number | null;
   } | null;
+}
+
+function cycleDays(intervalMinutes: number, batchSize: number, total: number): string {
+  if (total === 0) return "—";
+  const runsPerDay = 1440 / intervalMinutes;
+  const agPerDay = runsPerDay * batchSize;
+  const days = Math.ceil(total / agPerDay);
+  return days === 1 ? "~1 giorno" : `~${days} giorni`;
 }
 
 function formatInterval(minutes: number): string {
@@ -33,21 +44,30 @@ function formatInterval(minutes: number): string {
 }
 
 export default function AgentsPage() {
+  const { currentDomainId } = useDomain();
   const [agents, setAgents] = useState<AgentSummary[]>([]);
+  const [totalAgencies, setTotalAgencies] = useState<number>(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function load() {
-      const res = await fetch("/api/agents");
-      if (res.ok) {
-        const data = await res.json();
+      const [agentsRes, statsRes] = await Promise.all([
+        fetch("/api/agents"),
+        currentDomainId ? fetch(`/api/agencies/stats?domain_id=${currentDomainId}`) : Promise.resolve(null),
+      ]);
+      if (agentsRes.ok) {
+        const data = await agentsRes.json();
         setAgents(data.agents ?? []);
+      }
+      if (statsRes?.ok) {
+        const s = await statsRes.json();
+        setTotalAgencies(s.total ?? 0);
       }
       setLoading(false);
     }
     load();
     void supabase;
-  }, []);
+  }, [currentDomainId]);
 
   return (
     <div>
@@ -98,6 +118,16 @@ export default function AgentsPage() {
                         <div className="muted" style={{ fontSize: 10, marginTop: 2 }}>
                           {a.schedule_config.enabled ? "cron on" : "cron off"}
                         </div>
+                        {totalAgencies > 0 && (
+                          <div style={{ fontSize: 10, marginTop: 4, color: "var(--fg2)" }}
+                            title={`${totalAgencies} agenzie ÷ ${a.schedule_config.batch_size ?? 15} per run × ${1440 / a.schedule_config.interval_minutes} run/giorno`}>
+                            {cycleDays(
+                              a.schedule_config.interval_minutes,
+                              a.schedule_config.batch_size ?? 15,
+                              totalAgencies,
+                            )} per ciclo completo
+                          </div>
+                        )}
                       </div>
                     ) : a.schedule ? (
                       <code style={{ fontSize: 11, color: "var(--fg2)" }}>{a.schedule}</code>
