@@ -99,31 +99,74 @@ export default function OverviewPage() {
       </div>
 
       {/* Mappa agenzie */}
-      <div className="cd" style={{ marginTop: 20, padding: 16 }}>
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12 }}>
+      <MapSection points={mapPoints} />
+    </div>
+  );
+}
+
+function MapLegend() {
+  return (
+    <div style={{ display: "flex", gap: 12, fontSize: 11, color: "var(--fg3)" }}>
+      <span><span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: "#22c55e", marginRight: 4 }} />Verificata</span>
+      <span><span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: "#3b82f6", marginRight: 4 }} />Non verificata</span>
+    </div>
+  );
+}
+
+function MapSection({ points }: { points: MapPoint[] }) {
+  const [fullscreen, setFullscreen] = useState(false);
+
+  const header = (
+    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12 }}>
+      <div>
+        <div className="lb">Distribuzione geografica</div>
+        <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+          {points.length > 0 ? `${points.length} agenzie con coordinate` : "Nessuna coordinata disponibile"}
+        </div>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+        {points.length > 0 && <MapLegend />}
+        {points.length > 0 && (
+          <button
+            onClick={() => setFullscreen(true)}
+            style={{ background: "none", border: "1px solid var(--bd)", borderRadius: 4, padding: "3px 8px", fontSize: 11, color: "var(--fg2)", cursor: "pointer" }}
+          >
+            ⛶ Fullscreen
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
+  if (fullscreen) {
+    return (
+      <div style={{ position: "fixed", inset: 0, zIndex: 1000, background: "var(--bg)", display: "flex", flexDirection: "column", padding: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
           <div>
             <div className="lb">Distribuzione geografica</div>
-            <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
-              {mapPoints.length > 0
-                ? `${mapPoints.length} agenzie con coordinate · verde = verificata`
-                : "Nessuna coordinata disponibile"}
-            </div>
+            <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>{points.length} agenzie con coordinate</div>
           </div>
-          {mapPoints.length > 0 && (
-            <div style={{ display: "flex", gap: 12, fontSize: 11, color: "var(--fg3)" }}>
-              <span>
-                <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: "#22c55e", marginRight: 4 }} />
-                Verificata
-              </span>
-              <span>
-                <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: "#3b82f6", marginRight: 4 }} />
-                Non verificata
-              </span>
-            </div>
-          )}
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <MapLegend />
+            <button
+              onClick={() => setFullscreen(false)}
+              style={{ background: "none", border: "1px solid var(--bd)", borderRadius: 4, padding: "3px 8px", fontSize: 11, color: "var(--fg2)", cursor: "pointer" }}
+            >
+              ✕ Chiudi
+            </button>
+          </div>
         </div>
-        <AgenzieMap points={mapPoints} />
+        <div style={{ flex: 1, minHeight: 0 }}>
+          <AgenzieMap points={points} height="100%" />
+        </div>
       </div>
+    );
+  }
+
+  return (
+    <div className="cd" style={{ marginTop: 20, padding: 16 }}>
+      {header}
+      <AgenzieMap points={points} />
     </div>
   );
 }

@@ -13,7 +13,7 @@ export interface MapPoint {
 
 interface Props {
   points: MapPoint[];
-  height?: number;
+  height?: number | string;
 }
 
 export function AgenzieMap({ points, height = 420 }: Props) {
