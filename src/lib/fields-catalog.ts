@@ -380,6 +380,32 @@ export const FIELDS_CATALOG: FieldDefinition[] = [
   // MERCATI
   // ============================================================
   {
+    key: "lat",
+    label: "Latitudine",
+    category: "Sedi",
+    type: "float",
+    description: "Latitudine geografica della sede principale (da Google Places).",
+    source: "google_places",
+    updatePolicy: "always_overwrite",
+    verifiedBehavior: V_OW,
+    visibility: "pubblico",
+    csvV2: "lat",
+    notes: "Rispetta manual_fields lock. Usato per la mappa homepage.",
+  },
+  {
+    key: "lng",
+    label: "Longitudine",
+    category: "Sedi",
+    type: "float",
+    description: "Longitudine geografica della sede principale (da Google Places).",
+    source: "google_places",
+    updatePolicy: "always_overwrite",
+    verifiedBehavior: V_OW,
+    visibility: "pubblico",
+    csvV2: "lng",
+    notes: "Rispetta manual_fields lock. Usato per la mappa homepage.",
+  },
+  {
     key: "aree",
     label: "Aree",
     category: "Mercati",
@@ -1398,6 +1424,18 @@ export const FIELDS_CATALOG: FieldDefinition[] = [
   // ============================================================
   // SISTEMA
   // ============================================================
+  {
+    key: "manual_fields",
+    label: "Manual fields (lock)",
+    category: "Sistema",
+    type: "text[]",
+    description: "Elenco campi bloccati per editing manuale. L'agency-updater salta la scrittura su questi campi.",
+    source: "system",
+    updatePolicy: "computed_per_run",
+    verifiedBehavior: V_NEVER,
+    visibility: "interno",
+    notes: "Aggiornato automaticamente dal PATCH /api/agencies/[id] ad ogni edit dashboard.",
+  },
   {
     key: "domain_id",
     label: "Domain ID",

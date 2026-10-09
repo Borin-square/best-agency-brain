@@ -4,11 +4,11 @@ import { useEffect, useRef } from "react";
 
 export interface MapPoint {
   id: string;
-  nome: string;
+  title: string;
   citta: string | null;
   lat: number;
   lng: number;
-  verified: boolean | null;
+  verifica: string | null;
 }
 
 interface Props {
@@ -55,13 +55,13 @@ export function AgenzieMap({ points, height = 420 }: Props) {
       const markers = points.map((p) =>
         L.circleMarker([p.lat, p.lng], {
           radius: 7,
-          fillColor: p.verified ? "#22c55e" : "#3b82f6",
-          color: p.verified ? "#15803d" : "#1d4ed8",
+          fillColor: p.verifica === "verified" ? "#22c55e" : "#3b82f6",
+          color: p.verifica === "verified" ? "#15803d" : "#1d4ed8",
           weight: 1.5,
           fillOpacity: 0.85,
         })
           .bindPopup(
-            `<strong style="font-size:13px">${p.nome}</strong>${p.citta ? `<br><span style="color:#666;font-size:12px">${p.citta}</span>` : ""}${p.verified ? '<br><span style="color:#16a34a;font-size:11px">✓ Verificata</span>' : ""}`,
+            `<strong style="font-size:13px">${p.title}</strong>${p.citta ? `<br><span style="color:#666;font-size:12px">${p.citta}</span>` : ""}${p.verifica === "verified" ? '<br><span style="color:#16a34a;font-size:11px">✓ Verificata</span>' : ""}`,
           )
           .addTo(map),
       );

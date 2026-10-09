@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
   const supabase = createServiceClient();
   const { data, error } = await supabase
     .from("agencies")
-    .select("id, nome, citta, lat, lng, verified")
+    .select("id, title, citta, lat, lng, verifica")
     .eq("domain_id", domainId)
     .not("lat", "is", null)
     .not("lng", "is", null);
