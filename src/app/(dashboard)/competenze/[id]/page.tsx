@@ -101,7 +101,6 @@ export default function SkillDetailPage() {
         headers: { "Content-Type": "application/json", ...h },
         body: JSON.stringify({
           label: label.trim(),
-          slug: slug.trim(),
           query_modifier: modifier.trim() || "agenzia",
           descrizione: descrizione.trim() || null,
           seo_definition: seoDefinition.trim() || null,
@@ -276,13 +275,17 @@ export default function SkillDetailPage() {
             <div className="lb">Slug</div>
             <input
               type="text"
-              required
+              readOnly
               value={slug}
-              onChange={(e) => setSlug(e.target.value)}
-              style={{ ...inputStyle, fontFamily: "ui-monospace, monospace", fontSize: 12 }}
+              style={{
+                ...inputStyle,
+                fontFamily: "ui-monospace, monospace",
+                fontSize: 12,
+                color: "var(--fg3)",
+              }}
             />
             <div style={{ fontSize: 11, color: "var(--fg3)", marginTop: 4 }}>
-              Modificare lo slug aggiorna la tassonomia WP — verificare prima le agenzie associate.
+              Non modificabile: è l&apos;URL del sito e lo usano le agenzie. Cambia l&apos;etichetta.
             </div>
           </div>
         </div>
