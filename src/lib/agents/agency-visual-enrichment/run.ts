@@ -22,6 +22,7 @@ interface AgencyRow {
   title: string;
   sito_web: string | null;
   logo_url: string | null;
+  logo_meta: unknown;
   photos: unknown;
   portfolio: unknown;
   visual_enriched_at: string | null;
@@ -121,7 +122,7 @@ async function pickAgencies(
   refreshDays: number,
 ): Promise<AgencyRow[] | null> {
   const { agencyIds, domainId } = ctx.filters;
-  const SELECT = "id, title, sito_web, logo_url, photos, portfolio, visual_enriched_at, citta";
+  const SELECT = "id, title, sito_web, logo_url, logo_meta, photos, portfolio, visual_enriched_at, citta";
 
   // 1. Selezione manuale: ids espliciti
   if (agencyIds && agencyIds.length > 0) {
@@ -384,7 +385,13 @@ export async function runAgencyVisualEnrichment(ctx: AgentContext): Promise<Agen
     let logoChanged = false;
     let anyTeamChanged = false;
 
-    if (logoTop) {
+    // Un logo impostato a mano dallo staff (pagina agenzia del brain) non si sostituisce mai.
+    if (extractLogoMetaField(agency, "manuale") === true) {
+      outcome.logo.status = "ALREADY_PRESENT";
+      outcome.logo.public_url = agency.logo_url;
+      outcome.logo.notes = "Logo impostato a mano: l'agente non lo sostituisce";
+      logosAlreadyPresent++;
+    } else if (logoTop) {
       outcome.logo.original_source_url = logoTop.src;
       outcome.logo.confidence = logoTop.confidence;
       outcome.logo.alt_text = logoAlt;

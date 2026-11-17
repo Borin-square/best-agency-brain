@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { use, useEffect, useState } from "react";
 import { computeAgencyScore, type ScorableAgency } from "@/lib/agency-score";
+import { LogoEditor, type LogoMeta } from "@/components/agency/LogoEditor";
 
 interface Agency {
   id: string;
@@ -57,17 +58,7 @@ interface Agency {
   sources_used: Record<string, unknown> | null;
 
   logo_url: string | null;
-  logo_meta: {
-    file_name?: string;
-    mime_type?: string;
-    width?: number | null;
-    height?: number | null;
-    alt_text?: string;
-    description?: string;
-    source_url?: string;
-    confidence?: number;
-    updated_at?: string;
-  } | null;
+  logo_meta: LogoMeta;
   visual_enrichment_status: string | null;
   visual_enriched_at: string | null;
   photos: Array<{
@@ -311,8 +302,11 @@ export default function AgencyDetailPage({ params }: { params: Promise<{ id: str
       </div>
     ) : null;
 
+  // Solo http(s) diventa link: la fonte di un logo caricato a mano è un testo ("caricato a mano: …").
   const link = (url: string | null) =>
-    url ? (
+    url && !/^https?:\/\//i.test(url) ? (
+      url
+    ) : url ? (
       <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>
         {url}
       </a>
@@ -489,34 +483,13 @@ export default function AgencyDetailPage({ params }: { params: Promise<{ id: str
         </h2>
 
         {/* Logo */}
-        <div style={{ display: "grid", gridTemplateColumns: "180px 1fr", gap: 16, marginBottom: 20 }}>
-          <div>
-            <div className="lb">Logo</div>
-            {agency.logo_url ? (
-              <div
-                style={{
-                  marginTop: 6,
-                  padding: 10,
-                  background: "var(--bg3)",
-                  borderRadius: 6,
-                  border: "1px solid var(--bd)",
-                  minHeight: 100,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={agency.logo_url}
-                  alt={agency.logo_meta?.alt_text ?? `Logo di ${agency.title}`}
-                  style={{ maxWidth: "100%", maxHeight: 100, objectFit: "contain" }}
-                />
-              </div>
-            ) : (
-              <div style={{ marginTop: 6, color: "var(--fg3)", fontSize: 13 }}>—</div>
-            )}
-          </div>
+        <div style={{ display: "grid", gridTemplateColumns: "240px 1fr", gap: 16, marginBottom: 20 }}>
+          <LogoEditor
+            agencyId={agency.id}
+            title={agency.title}
+            logo={{ logo_url: agency.logo_url, logo_meta: agency.logo_meta }}
+            onChange={(logo) => setAgency((a) => (a ? { ...a, ...logo } : a))}
+          />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <Field label="File" value={agency.logo_meta?.file_name} mono />
             <Field
