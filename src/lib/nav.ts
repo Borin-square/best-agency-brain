@@ -31,6 +31,7 @@ export const MAIN_NAV: NavItem[] = [
     ],
   },
   { id: "content", label: "Contenuti", href: "/content", icon: "☰" },
+  { id: "richieste", label: "Richieste", href: "/richieste", icon: "✎" },
 ];
 
 export const FOOTER_NAV: NavItem[] = [
