@@ -30,7 +30,7 @@ export const MAIN_NAV: NavItem[] = [
       { id: "crm-campaigns", label: "Campagne", href: "/crm/campaigns" },
     ],
   },
-  { id: "content", label: "Content", href: "/content", icon: "☰" },
+  { id: "content", label: "Contenuti", href: "/content", icon: "☰" },
 ];
 
 export const FOOTER_NAV: NavItem[] = [
