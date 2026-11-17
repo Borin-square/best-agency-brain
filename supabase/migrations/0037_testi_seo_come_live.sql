@@ -5,14 +5,14 @@
 -- separato e misurabile in Search Console. Cambiare testi e tecnologia insieme renderebbe
 -- impossibile capire la causa di un eventuale calo.
 --
--- Rimette quindi:
---   - agency_skills.seo_definition: le definizioni che il live usa davvero (calcolate con
---     mg_competenza_definizione() del tema: campo vuoto → "le migliori agenzie di {Nome}", tranne
---     web-agency). Le forme ritoccate della 0032 ("le migliori agenzie SEO"...) sono annotate in
---     docs/rebuild.md del sito, da rimettere dal campo "Definizione SEO" della pagina competenze.
---   - areas.luogo di 4 aree: "in Lazio", "in Marche", "a La Spezia", "a L'Aquila" come sul live
---     (corrette il 10/11 in "nel Lazio", "nelle Marche", "alla Spezia", "all'Aquila").
---     luogo serve solo ai testi: il riconoscimento delle aree (aree_da_testo) usa nome e alias.
+-- Rimette quindi agency_skills.seo_definition con le definizioni che il live usa davvero
+-- (calcolate con mg_competenza_definizione() del tema: campo vuoto → "le migliori agenzie di
+-- {Nome}", tranne web-agency). Le forme ritoccate della 0032 ("le migliori agenzie SEO"...) sono
+-- annotate in docs/rebuild.md del sito, da rimettere dal campo "Definizione SEO" della pagina
+-- competenze.
+--
+-- Le preposizioni corrette delle aree ("nel Lazio", "nelle Marche", "alla Spezia", "all'Aquila")
+-- restano: toccano solo 4 pagine e la parola chiave non cambia.
 --
 -- woocommerce non esiste sul live e resta com'è. Rieseguibile.
 
@@ -49,23 +49,10 @@ begin
     ('wordpress',              'le migliori agenzie di Wordpress')
   ) as v(slug, def)
   where s.slug = v.slug and s.domain_id = dominio;
-
-  update public.areas a
-  set luogo = v.luogo
-  from (values
-    ('lazio',     'in Lazio'),
-    ('marche',    'in Marche'),
-    ('la-spezia', 'a La Spezia'),
-    ('laquila',   'a L''Aquila')
-  ) as v(slug, luogo)
-  where a.slug = v.slug and a.domain_id = dominio;
 end $$;
 
--- Controllo: 24 competenze e 4 aree con il testo del live.
-select
-  (select count(*) from public.agency_skills s
-   join public.network_domains d on d.id = s.domain_id and d.domain = 'miglioreagenzia.it'
-   where s.seo_definition like 'le migliori agenzie di %' or s.seo_definition = 'Le migliori Web Agency') as competenze_come_live,
-  (select count(*) from public.areas a
-   join public.network_domains d on d.id = a.domain_id and d.domain = 'miglioreagenzia.it'
-   where (a.slug, a.luogo) in (('lazio', 'in Lazio'), ('marche', 'in Marche'), ('la-spezia', 'a La Spezia'), ('laquila', 'a L''Aquila'))) as aree_come_live;
+-- Controllo: 24 competenze con il testo del live.
+select count(*) as competenze_come_live
+from public.agency_skills s
+join public.network_domains d on d.id = s.domain_id and d.domain = 'miglioreagenzia.it'
+where s.seo_definition like 'le migliori agenzie di %' or s.seo_definition = 'Le migliori Web Agency';
