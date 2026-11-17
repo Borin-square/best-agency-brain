@@ -52,6 +52,12 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
         ? body.descrizione.trim()
         : null;
   }
+  if (body.seo_definition !== undefined) {
+    patch.seo_definition =
+      typeof body.seo_definition === "string" && body.seo_definition.trim()
+        ? body.seo_definition.trim()
+        : null;
+  }
   if (Array.isArray(body.faq)) {
     patch.faq = body.faq;
   }

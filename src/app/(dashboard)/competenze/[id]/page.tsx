@@ -22,6 +22,7 @@ interface Skill {
   sort_order: number;
   query_modifier: string;
   descrizione: string | null;
+  seo_definition: string | null;
   faq: FaqItem[];
   guide_correlate: GuideItem[];
   created_at: string;
@@ -41,6 +42,7 @@ export default function SkillDetailPage() {
   const [slug, setSlug] = useState("");
   const [modifier, setModifier] = useState("");
   const [descrizione, setDescrizione] = useState("");
+  const [seoDefinition, setSeoDefinition] = useState("");
   const [faq, setFaq] = useState<FaqItem[]>([]);
   const [guide, setGuide] = useState<GuideItem[]>([]);
 
@@ -68,6 +70,7 @@ export default function SkillDetailPage() {
     setSlug(data.slug);
     setModifier(data.query_modifier ?? "agenzia");
     setDescrizione(data.descrizione ?? "");
+    setSeoDefinition(data.seo_definition ?? "");
     setFaq(Array.isArray(data.faq) ? data.faq : []);
     setGuide(Array.isArray(data.guide_correlate) ? data.guide_correlate : []);
     setLoading(false);
@@ -101,6 +104,7 @@ export default function SkillDetailPage() {
           slug: slug.trim(),
           query_modifier: modifier.trim() || "agenzia",
           descrizione: descrizione.trim() || null,
+          seo_definition: seoDefinition.trim() || null,
         }),
       });
       if (!res.ok) {
@@ -113,6 +117,7 @@ export default function SkillDetailPage() {
       setSlug(updated.slug);
       setModifier(updated.query_modifier ?? "agenzia");
       setDescrizione(updated.descrizione ?? "");
+      setSeoDefinition(updated.seo_definition ?? "");
       setBaseSaved(true);
       setTimeout(() => setBaseSaved(false), 2000);
     } catch (e) {
@@ -295,6 +300,23 @@ export default function SkillDetailPage() {
             placeholder="agenzia"
             onChange={(e) => setModifier(e.target.value)}
             style={{ ...inputStyle, maxWidth: 220 }}
+          />
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <div className="lb">
+            Definizione SEO{" "}
+            <span style={{ fontWeight: 400, color: "var(--fg3)" }}>
+              — H1 e title del sito: «{"{definizione}"} a Milano». Minuscolo, con articolo e
+              «migliori»
+            </span>
+          </div>
+          <input
+            type="text"
+            value={seoDefinition}
+            placeholder="le migliori agenzie SEO"
+            onChange={(e) => setSeoDefinition(e.target.value)}
+            style={inputStyle}
           />
         </div>
 
