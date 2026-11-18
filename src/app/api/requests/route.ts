@@ -1,6 +1,6 @@
 // Richieste arrivate dai form del sito pubblico (tabella site_requests, migrazione 0036): elenco
 // per dominio, le più recenti prima, con il contatto CRM del mittente (migrazione 0038).
-// Filtri facoltativi: stato e tipo.
+// Filtri facoltativi: stato e tipo (la pagina Richieste carica tutto e filtra lato client).
 
 import { NextResponse, type NextRequest } from "next/server";
 import { requireStaff } from "@/lib/api-auth";

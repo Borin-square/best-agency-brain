@@ -4,6 +4,9 @@
 // del dominio corrente. Prendono il posto di Flamingo sul vecchio WordPress. Le email partono dal
 // sito al momento dell'invio; qui si leggono, si cambia lo stato e si annota. Il mittente viene
 // censito nei Contatti dal database al momento dell'invio (migrazione 0038).
+//
+// I due form sono flussi separati, in schede: "Proponi un'agenzia" viene prima ed è aperta di
+// default perché le agenzie sono i lead (abbonamenti per verifica e inserimento del profilo).
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -27,6 +30,12 @@ interface Richiesta {
 
 const STATI: Record<Stato, string> = { nuova: "Nuova", in_lavorazione: "In lavorazione", chiusa: "Chiusa", spam: "Spam" };
 const TIPI: Record<Tipo, string> = { trova: "Cerca un'agenzia", proponi: "Proponi un'agenzia" };
+// Schede in cima alla pagina, nell'ordine in cui compaiono.
+const SCHEDE: { id: Tipo | ""; label: string }[] = [
+  { id: "proponi", label: "Proponi un'agenzia" },
+  { id: "trova", label: "Raccontaci cosa cerchi" },
+  { id: "", label: "Tutte" },
+];
 
 // Etichette dei campi dei due form (src/lib/moduli.ts del sito), nell'ordine del form.
 const CAMPI: Record<Tipo, [string, string][]> = {
@@ -71,7 +80,7 @@ export default function RichiestePage() {
   const [caricamento, setCaricamento] = useState(true);
   const [errore, setErrore] = useState<string | null>(null);
   const [filtroStato, setFiltroStato] = useState<Stato | "">("");
-  const [filtroTipo, setFiltroTipo] = useState<Tipo | "">("");
+  const [filtroTipo, setFiltroTipo] = useState<Tipo | "">("proponi");
   const [aperta, setAperta] = useState<string | null>(null);
 
   const carica = useCallback(async () => {
@@ -80,15 +89,13 @@ export default function RichiestePage() {
     setErrore(null);
     try {
       const q = new URLSearchParams({ domain_id: currentDomainId });
-      if (filtroStato) q.set("stato", filtroStato);
-      if (filtroTipo) q.set("tipo", filtroTipo);
       const { rows } = await apiStaff<{ rows: Richiesta[] }>(`/api/requests?${q}`);
       setRighe(rows);
     } catch (e) {
       setErrore((e as Error).message);
     }
     setCaricamento(false);
-  }, [currentDomainId, filtroStato, filtroTipo]);
+  }, [currentDomainId]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- caricamento iniziale, come le altre pagine del brain
@@ -107,7 +114,11 @@ export default function RichiestePage() {
     }
   }
 
-  const nuove = righe.filter((r) => r.stato === "nuova").length;
+  // Tutte le richieste del dominio si caricano una volta; schede e stato filtrano qui, così ogni
+  // scheda mostra quante nuove ha anche quando non è aperta.
+  const nuovePer = (tipo: Tipo | "") => righe.filter((r) => r.stato === "nuova" && (!tipo || r.tipo === tipo)).length;
+  const visibili = righe.filter((r) => (!filtroTipo || r.tipo === filtroTipo) && (!filtroStato || r.stato === filtroStato));
+  const nuove = nuovePer(filtroTipo);
 
   return (
     <div>
@@ -120,15 +131,45 @@ export default function RichiestePage() {
         l&apos;avviso.
       </p>
 
+      <div role="tablist" style={{ display: "flex", gap: 4, borderBottom: "1px solid var(--bd)", marginBottom: 16 }}>
+        {SCHEDE.map((t) => {
+          const attiva = filtroTipo === t.id;
+          const n = caricamento ? 0 : nuovePer(t.id);
+          return (
+            <button
+              key={t.id || "tutte"}
+              type="button"
+              role="tab"
+              aria-selected={attiva}
+              onClick={() => {
+                setFiltroTipo(t.id);
+                setAperta(null);
+              }}
+              style={{
+                padding: "8px 14px",
+                marginBottom: -1,
+                background: "none",
+                border: 0,
+                borderBottom: `2px solid ${attiva ? "var(--accent)" : "transparent"}`,
+                color: attiva ? "var(--fg)" : "var(--fg2)",
+                fontWeight: attiva ? 600 : 400,
+                fontSize: 13,
+                fontFamily: "inherit",
+                cursor: "pointer",
+              }}
+            >
+              {t.label}
+              {n > 0 && (
+                <span style={{ marginLeft: 6, padding: "1px 6px", borderRadius: 10, background: "var(--accent)", color: "#fff", fontSize: 11 }}>
+                  {n}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-        <select value={filtroTipo} onChange={(e) => setFiltroTipo(e.target.value as Tipo | "")} style={{ ...inputStyle, width: 220 }}>
-          <option value="">Tutti i form</option>
-          {Object.entries(TIPI).map(([k, v]) => (
-            <option key={k} value={k}>
-              {v}
-            </option>
-          ))}
-        </select>
         <select value={filtroStato} onChange={(e) => setFiltroStato(e.target.value as Stato | "")} style={{ ...inputStyle, width: 180 }}>
           <option value="">Tutti gli stati</option>
           {Object.entries(STATI).map(([k, v]) => (
@@ -142,11 +183,11 @@ export default function RichiestePage() {
       {errore && <p style={{ color: "var(--red)", marginBottom: 12 }}>{errore}</p>}
       {caricamento ? (
         <p className="muted">Caricamento…</p>
-      ) : !righe.length ? (
+      ) : !visibili.length ? (
         <p className="muted">Nessuna richiesta.</p>
       ) : (
         <div style={{ display: "grid", gap: 8 }}>
-          {righe.map((r) => (
+          {visibili.map((r) => (
             <div key={r.id} className="cd" style={{ padding: 0 }}>
               <button
                 type="button"
@@ -155,7 +196,8 @@ export default function RichiestePage() {
                 style={{
                   width: "100%",
                   display: "grid",
-                  gridTemplateColumns: "150px 160px 1fr auto",
+                  // La colonna del form serve solo nella scheda "Tutte".
+                  gridTemplateColumns: filtroTipo ? "150px 1fr auto" : "150px 160px 1fr auto",
                   gap: 12,
                   alignItems: "center",
                   padding: "12px 16px",
@@ -170,7 +212,7 @@ export default function RichiestePage() {
                 <span className="muted" style={{ fontSize: 12 }}>
                   {quando(r.created_at)}
                 </span>
-                <span style={{ fontSize: 12 }}>{TIPI[r.tipo]}</span>
+                {!filtroTipo && <span style={{ fontSize: 12 }}>{TIPI[r.tipo]}</span>}
                 <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{titolo(r)}</span>
                 <span style={{ display: "flex", gap: 6, fontSize: 11 }}>
                   {r.email_inviata === false && <span style={{ color: "var(--red)" }}>email non partita</span>}
