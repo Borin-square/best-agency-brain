@@ -11,7 +11,7 @@ Next.js 16 App Router + Supabase (auth+db+storage) + Tailwind 4 + Vercel Cron. P
 
 ## Sezioni (`src/app/(dashboard)/`, nav in `src/lib/nav.ts`)
 - **Overview**: KPI agenzie
-- **Agenzie**: lista con filtri, colonne configurabili e mappa; scheda di dettaglio; import/export CSV (v1 e v2), stats
+- **Agenzie**: lista con filtri, colonne configurabili e mappa; scheda di dettaglio con modifica in linea dei campi (whitelist in `src/lib/agency-editable.ts`, i campi salvati finiscono in `manual_fields` e l'agency-updater non li sovrascrive); import/export CSV (v1 e v2), stats
 - **Fields**: documentazione dei campi della tabella `agencies` (`src/lib/fields-catalog.ts`)
 - **Quality**: coda delle issue aperte (`agency_issues`) prodotte da agency-quality-check, da rivedere a mano
 - **Competenze**: lista controllata di skill (slug immutabile, campi SEO, guide, correlate); export CSV

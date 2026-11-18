@@ -358,6 +358,8 @@ export async function runAgencyUpdater(ctx: AgentContext): Promise<AgentResult> 
     // L'LLM riempie i campi vuoti (rispetta curatela manuale) …
     if (llmData) {
       for (const field of LLM_FILL_IF_EMPTY) {
+        // Un campo svuotato a mano resta vuoto.
+        if (isLocked(field, agency)) continue;
         const currentValue = agency[field as LlmFillField];
         const newValue = llmData[field as keyof LlmExtraction];
         if (isEmpty(currentValue) && !isEmpty(newValue)) {

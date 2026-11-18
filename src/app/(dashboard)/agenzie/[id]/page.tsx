@@ -4,6 +4,7 @@ import Link from "next/link";
 import { use, useEffect, useState } from "react";
 import { computeAgencyScore, type ScorableAgency } from "@/lib/agency-score";
 import { LogoEditor, type LogoMeta } from "@/components/agency/LogoEditor";
+import { AgencyEditProvider, Field } from "@/components/agency/EditableField";
 
 interface Agency {
   id: string;
@@ -141,6 +142,9 @@ interface Agency {
   serp_url: string | null;
   serp_checked_at: string | null;
 
+  manual_fields: string[] | null;
+  domain_id: string | null;
+
   created_at: string;
   updated_at: string;
 }
@@ -235,27 +239,6 @@ function ScoreCard({ agency }: { agency: ScorableAgency }) {
   );
 }
 
-function Field({ label, value, mono }: { label: string; value: React.ReactNode; mono?: boolean }) {
-  const isEmpty =
-    value === null || value === undefined || value === "" || (Array.isArray(value) && value.length === 0);
-  return (
-    <div>
-      <div className="lb">{label}</div>
-      <div
-        style={{
-          fontSize: 13,
-          color: isEmpty ? "var(--fg3)" : "var(--fg)",
-          fontFamily: mono ? "ui-monospace, monospace" : "inherit",
-          wordBreak: "break-word",
-          marginTop: 4,
-        }}
-      >
-        {isEmpty ? "—" : value}
-      </div>
-    </div>
-  );
-}
-
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="cd" style={{ marginTop: 16 }}>
@@ -271,6 +254,8 @@ export default function AgencyDetailPage({ params }: { params: Promise<{ id: str
   const { id } = use(params);
   const [agency, setAgency] = useState<Agency | null>(null);
   const [loading, setLoading] = useState(true);
+  // Valori già usati, suggeriti negli input dei campi testo "a lista aperta".
+  const [suggestions, setSuggestions] = useState<Record<string, string[]>>({});
 
   useEffect(() => {
     fetch(`/api/agencies/${id}`).then(async (r) => {
@@ -278,6 +263,22 @@ export default function AgencyDetailPage({ params }: { params: Promise<{ id: str
       setLoading(false);
     });
   }, [id]);
+
+  useEffect(() => {
+    if (!agency?.domain_id) return;
+    fetch(`/api/agencies/filter-options?domain_id=${agency.domain_id}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d) return;
+        setSuggestions({
+          verifica: d.verifica ?? [],
+          status_curatela: d.status_curatela ?? [],
+          regioni: d.regioni ?? [],
+          citta: d.citta ?? [],
+        });
+      })
+      .catch(() => {});
+  }, [agency?.domain_id]);
 
   if (loading) return <p className="muted">Caricamento…</p>;
   if (!agency) return <p className="muted">Agenzia non trovata.</p>;
@@ -383,6 +384,13 @@ export default function AgencyDetailPage({ params }: { params: Promise<{ id: str
     ) : null;
 
   return (
+    <AgencyEditProvider
+      value={{
+        agency: agency as unknown as Record<string, unknown> & { id: string },
+        onSaved: (a) => setAgency(a as unknown as Agency),
+        suggestions,
+      }}
+    >
     <div>
       <Link href="/agenzie" className="muted" style={{ fontSize: 12 }}>
         ← Tutte le agenzie
@@ -433,47 +441,51 @@ export default function AgencyDetailPage({ params }: { params: Promise<{ id: str
       <ScoreCard agency={agency} />
 
       <Section title="Core">
-        <Field label="Title" value={agency.title} />
+        <Field label="Title" k="title" value={agency.title} />
         <Field label="Title originale" value={agency.title_originale} />
         <Field label="Slug" value={agency.slug} mono />
-        <Field label="Status curatela" value={agency.status_curatela} />
-        <Field label="Pillar primario" value={agency.pillar_primario_slug} mono />
-        <Field label="Publish status" value={agency.publish_status} />
+        <Field label="Status curatela" k="status_curatela" value={agency.status_curatela} />
+        <Field label="Pillar primario" k="pillar_primario_slug" value={agency.pillar_primario_slug} mono />
+        <Field label="Publish status" k="publish_status" value={agency.publish_status} />
         <div style={{ gridColumn: "1 / -1" }}>
-          <Field label="Content" value={agency.content} />
+          <Field label="Content" k="content" value={agency.content} />
         </div>
         <div style={{ gridColumn: "1 / -1" }}>
-          <Field label="Descrizione breve" value={agency.descrizione_breve} />
+          <Field label="Descrizione breve" k="descrizione_breve" value={agency.descrizione_breve} />
         </div>
         <div style={{ gridColumn: "1 / -1" }}>
-          <Field label="Competenze core (max 2)" value={arr(agency.competenze_core)} />
+          <Field label="Competenze core (max 2)" k="competenze_core" value={arr(agency.competenze_core)} />
         </div>
         <div style={{ gridColumn: "1 / -1" }}>
-          <Field label="Competenze principali (max 5)" value={arr(agency.competenze_principali)} />
+          <Field label="Competenze principali (max 5)" k="competenze_principali" value={arr(agency.competenze_principali)} />
         </div>
         <div style={{ gridColumn: "1 / -1" }}>
-          <Field label="Altre competenze (max 10)" value={arr(agency.altre_competenze)} />
+          <Field label="Altre competenze (max 10)" k="altre_competenze" value={arr(agency.altre_competenze)} />
         </div>
-        <Field label="Caratteristiche" value={arr(agency.caratteristiche)} />
-        <Field label="Aree" value={agency.aree} />
+        <Field label="Caratteristiche" k="caratteristiche" value={arr(agency.caratteristiche)} />
+        <Field label="Aree" k="aree" value={agency.aree} />
+        <Field label="Verifica" k="verifica" value={agency.verifica} />
+        <Field label="Città" k="citta" value={agency.citta} mono />
+        <Field label="Regione" k="regioni" value={agency.regioni} mono />
+        <Field label="Google Partner" k="google_partner_cert" value={agency.google_partner_cert == null ? null : agency.google_partner_cert ? "Sì" : "No"} />
       </Section>
 
       <Section title="Contatti & sede">
-        <Field label="Sito web" value={link(agency.sito_web)} />
-        <Field label="Email" value={agency.email} />
-        <Field label="Telefono" value={agency.telefono} />
-        <Field label="Indirizzo completo" value={agency.indirizzo_completo} />
-        <Field label="Anno di fondazione" value={agency.anno_di_fondazione} />
-        <Field label="Dimensione team" value={agency.dimensione_team} />
-        <Field label="Lingue" value={arr(agency.lingue)} />
-        <Field label="Fascia di prezzo" value={agency.fascia_di_prezzo} />
-        <Field label="Partita IVA" value={agency.partita_iva} mono />
+        <Field label="Sito web" k="sito_web" value={link(agency.sito_web)} />
+        <Field label="Email" k="email" value={agency.email} />
+        <Field label="Telefono" k="telefono" value={agency.telefono} />
+        <Field label="Indirizzo completo" k="indirizzo_completo" value={agency.indirizzo_completo} />
+        <Field label="Anno di fondazione" k="anno_di_fondazione" value={agency.anno_di_fondazione} />
+        <Field label="Dimensione team" k="dimensione_team" value={agency.dimensione_team} />
+        <Field label="Lingue" k="lingue" value={arr(agency.lingue)} />
+        <Field label="Fascia di prezzo" k="fascia_di_prezzo" value={agency.fascia_di_prezzo} />
+        <Field label="Partita IVA" k="partita_iva" value={agency.partita_iva} mono />
       </Section>
 
       <Section title="Social & media">
-        <Field label="LinkedIn" value={link(agency.linkedin)} />
-        <Field label="Instagram" value={link(agency.instagram)} />
-        <Field label="Behance" value={link(agency.behance)} />
+        <Field label="LinkedIn" k="linkedin" value={link(agency.linkedin)} />
+        <Field label="Instagram" k="instagram" value={link(agency.instagram)} />
+        <Field label="Behance" k="behance" value={link(agency.behance)} />
         <Field label="Foto del team (legacy)" value={link(agency.foto_del_team)} />
       </Section>
 
@@ -597,13 +609,13 @@ export default function AgencyDetailPage({ params }: { params: Promise<{ id: str
               : null
           }
         />
-        <Field label="Categoria Google" value={agency.google_categoria} />
-        <Field label="Telefono Google" value={agency.google_telefono} />
-        <Field label="Sito Google" value={link(agency.google_sito)} />
+        <Field label="Categoria Google" k="google_categoria" value={agency.google_categoria} />
+        <Field label="Telefono Google" k="google_telefono" value={agency.google_telefono} />
+        <Field label="Sito Google" k="google_sito" value={link(agency.google_sito)} />
         <div style={{ gridColumn: "1 / -1" }}>
-          <Field label="Indirizzo Google" value={agency.google_indirizzo} />
+          <Field label="Indirizzo Google" k="google_indirizzo" value={agency.google_indirizzo} />
         </div>
-        <Field label="Google Place ID" value={agency.google_place_id} mono />
+        <Field label="Google Place ID" k="google_place_id" value={agency.google_place_id} mono />
         <Field label="Foto Google" value={agency.google_foto_url} mono />
       </Section>
 
@@ -612,82 +624,80 @@ export default function AgencyDetailPage({ params }: { params: Promise<{ id: str
       {/* ============================================================== */}
 
       <Section title="Identità estesa">
-        <Field label="Parent slug" value={agency.parent_slug} mono />
-        <Field label="Legal form" value={agency.legal_form} />
-        <Field label="Incorporation year" value={agency.incorporation_year} />
+        <Field label="Parent slug" k="parent_slug" value={agency.parent_slug} mono />
+        <Field label="Legal form" k="legal_form" value={agency.legal_form} />
+        <Field label="Incorporation year" k="incorporation_year" value={agency.incorporation_year} />
         <div style={{ gridColumn: "1 / -1" }}>
-          <Field label="Alternate names" value={arr(agency.alternate_names)} />
+          <Field label="Alternate names" k="alternate_names" value={arr(agency.alternate_names)} />
         </div>
         <div style={{ gridColumn: "1 / -1" }}>
-          <Field label="Founder / leader" value={json(agency.founder_leader)} />
+          <Field label="Founder / leader" k="founder_leader" value={json(agency.founder_leader)} />
         </div>
       </Section>
 
       <Section title="Servizi & fit clienti">
         <div style={{ gridColumn: "1 / -1" }}>
-          <Field label="Deliverables" value={arr(agency.deliverables)} />
+          <Field label="Deliverables" k="deliverables" value={arr(agency.deliverables)} />
         </div>
         <div style={{ gridColumn: "1 / -1" }}>
-          <Field label="Platforms & tech" value={arr(agency.platforms_tech)} />
+          <Field label="Platforms & tech" k="platforms_tech" value={arr(agency.platforms_tech)} />
         </div>
         <div style={{ gridColumn: "1 / -1" }}>
-          <Field label="Industries" value={arr(agency.industries)} />
+          <Field label="Industries" k="industries" value={arr(agency.industries)} />
         </div>
-        <Field label="Audiences" value={arr(agency.audiences)} />
-        <Field label="Ideal client sizes" value={arr(agency.ideal_client_sizes)} />
+        <Field label="Audiences" k="audiences" value={arr(agency.audiences)} />
+        <Field label="Ideal client sizes" k="ideal_client_sizes" value={arr(agency.ideal_client_sizes)} />
         <div style={{ gridColumn: "1 / -1" }}>
-          <Field label="Engagement models" value={arr(agency.engagement_models)} />
+          <Field label="Engagement models" k="engagement_models" value={arr(agency.engagement_models)} />
         </div>
       </Section>
 
       <Section title="Pricing strutturato">
         <Field
           label="Budget minimo progetto"
+          k="min_project_budget"
           value={money(agency.min_project_budget, agency.min_project_currency)}
         />
-        <Field
-          label="Budget tipico (range)"
-          value={
-            agency.typical_project_min != null || agency.typical_project_max != null
-              ? `${agency.typical_project_min?.toLocaleString("it-IT") ?? "?"} — ${agency.typical_project_max?.toLocaleString("it-IT") ?? "?"} ${agency.min_project_currency ?? "EUR"}`
-              : null
-          }
-        />
+        <Field label="Valuta" k="min_project_currency" value={agency.min_project_currency} />
+        <Field label="Budget tipico min" k="typical_project_min" value={money(agency.typical_project_min, agency.min_project_currency)} />
+        <Field label="Budget tipico max" k="typical_project_max" value={money(agency.typical_project_max, agency.min_project_currency)} />
         <div style={{ gridColumn: "1 / -1" }}>
-          <Field label="Pricing models" value={arr(agency.pricing_models)} />
+          <Field label="Pricing models" k="pricing_models" value={arr(agency.pricing_models)} />
         </div>
       </Section>
 
       <Section title="Contenuti strutturati">
         <div style={{ gridColumn: "1 / -1" }}>
-          <Field label="Differentiators" value={json(agency.differentiators)} />
+          <Field label="Differentiators" k="differentiators" value={json(agency.differentiators)} />
         </div>
         <div style={{ gridColumn: "1 / -1" }}>
-          <Field label="Declared methodology" value={agency.declared_methodology} />
+          <Field label="Declared methodology" k="declared_methodology" value={agency.declared_methodology} />
         </div>
         <div style={{ gridColumn: "1 / -1" }}>
-          <Field label="FAQ" value={json(agency.faq)} />
+          <Field label="FAQ" k="faq" value={json(agency.faq)} />
         </div>
         <div style={{ gridColumn: "1 / -1" }}>
-          <Field label="Best for" value={json(agency.best_for)} />
+          <Field label="Best for" k="best_for" value={json(agency.best_for)} />
         </div>
         <div style={{ gridColumn: "1 / -1" }}>
-          <Field label="Less suitable for" value={json(agency.less_suitable_for)} />
+          <Field label="Less suitable for" k="less_suitable_for" value={json(agency.less_suitable_for)} />
         </div>
       </Section>
 
       <Section title="Recensioni AI">
         <Field
           label="Analysis confidence"
+          k="review_analysis_confidence"
           value={
             agency.review_analysis_confidence ? (
               <span className="bd-badge bd-muted">{agency.review_analysis_confidence}</span>
             ) : null
           }
         />
-        <Field label="Recensioni analizzate" value={agency.review_analyzed_count} />
+        <Field label="Recensioni analizzate" k="review_analyzed_count" value={agency.review_analyzed_count} />
         <Field
           label="Snapshot date"
+          k="review_snapshot_date"
           value={
             agency.review_snapshot_date
               ? new Date(agency.review_snapshot_date).toLocaleDateString("it-IT")
@@ -696,19 +706,20 @@ export default function AgencyDetailPage({ params }: { params: Promise<{ id: str
         />
         <div />
         <div style={{ gridColumn: "1 / -1" }}>
-          <Field label="Summary" value={agency.review_summary} />
+          <Field label="Summary" k="review_summary" value={agency.review_summary} />
         </div>
         <div style={{ gridColumn: "1 / -1" }}>
-          <Field label="Strengths ricorrenti" value={json(agency.review_strengths)} />
+          <Field label="Strengths ricorrenti" k="review_strengths" value={json(agency.review_strengths)} />
         </div>
         <div style={{ gridColumn: "1 / -1" }}>
-          <Field label="Criticisms ricorrenti" value={json(agency.review_criticisms)} />
+          <Field label="Criticisms ricorrenti" k="review_criticisms" value={json(agency.review_criticisms)} />
         </div>
       </Section>
 
       <Section title="Valutazione editoriale">
         <Field
           label="Evidence grade"
+          k="evidence_grade"
           value={
             agency.evidence_grade ? (
               <span className="bd-badge bd-muted">{agency.evidence_grade}</span>
@@ -717,6 +728,7 @@ export default function AgencyDetailPage({ params }: { params: Promise<{ id: str
         />
         <Field
           label="Evaluation confidence"
+          k="evaluation_confidence"
           value={
             agency.evaluation_confidence ? (
               <span className="bd-badge bd-muted">{agency.evaluation_confidence}</span>
@@ -725,6 +737,7 @@ export default function AgencyDetailPage({ params }: { params: Promise<{ id: str
         />
         <Field
           label="Human reviewed"
+          k="human_reviewed"
           value={
             agency.human_reviewed ? (
               <span className="bd-badge bd-success">Sì</span>
@@ -735,34 +748,35 @@ export default function AgencyDetailPage({ params }: { params: Promise<{ id: str
         />
         <div />
         <div style={{ gridColumn: "1 / -1" }}>
-          <Field label="Editorial summary" value={agency.editorial_summary} />
+          <Field label="Editorial summary" k="editorial_summary" value={agency.editorial_summary} />
         </div>
         <div style={{ gridColumn: "1 / -1" }}>
-          <Field label="Strengths (con evidenze)" value={json(agency.eval_strengths)} />
+          <Field label="Strengths (con evidenze)" k="eval_strengths" value={json(agency.eval_strengths)} />
         </div>
         <div style={{ gridColumn: "1 / -1" }}>
-          <Field label="Limitations" value={json(agency.eval_limitations)} />
+          <Field label="Limitations" k="eval_limitations" value={json(agency.eval_limitations)} />
         </div>
       </Section>
 
       <Section title="Financial">
-        <Field label="Revenue 2024" value={money(agency.revenue_2024, "EUR")} />
-        <Field label="Employees 2024" value={agency.employees_2024} />
-        <Field label="EBITDA 2024" value={money(agency.ebitda_2024, "EUR")} />
+        <Field label="Revenue 2024" k="revenue_2024" value={money(agency.revenue_2024, "EUR")} />
+        <Field label="Employees 2024" k="employees_2024" value={agency.employees_2024} />
+        <Field label="EBITDA 2024" k="ebitda_2024" value={money(agency.ebitda_2024, "EUR")} />
         <div />
-        <Field label="Revenue 2025" value={money(agency.revenue_2025, "EUR")} />
-        <Field label="Employees 2025" value={agency.employees_2025} />
-        <Field label="EBITDA 2025" value={money(agency.ebitda_2025, "EUR")} />
+        <Field label="Revenue 2025" k="revenue_2025" value={money(agency.revenue_2025, "EUR")} />
+        <Field label="Employees 2025" k="employees_2025" value={agency.employees_2025} />
+        <Field label="EBITDA 2025" k="ebitda_2025" value={money(agency.ebitda_2025, "EUR")} />
         <div />
-        <Field label="Revenue 2026" value={money(agency.revenue_2026, "EUR")} />
-        <Field label="Employees 2026" value={agency.employees_2026} />
-        <Field label="EBITDA 2026" value={money(agency.ebitda_2026, "EUR")} />
+        <Field label="Revenue 2026" k="revenue_2026" value={money(agency.revenue_2026, "EUR")} />
+        <Field label="Employees 2026" k="employees_2026" value={agency.employees_2026} />
+        <Field label="EBITDA 2026" k="ebitda_2026" value={money(agency.ebitda_2026, "EUR")} />
       </Section>
 
       <Section title="SEO">
-        <Field label="SEO title (override)" value={agency.seo_title} />
+        <Field label="SEO title (override)" k="seo_title" value={agency.seo_title} />
         <Field
           label="Indexation status"
+          k="indexation_status"
           value={
             agency.indexation_status ? (
               <span
@@ -780,7 +794,7 @@ export default function AgencyDetailPage({ params }: { params: Promise<{ id: str
           }
         />
         <div style={{ gridColumn: "1 / -1" }}>
-          <Field label="Meta description" value={agency.meta_description} />
+          <Field label="Meta description" k="meta_description" value={agency.meta_description} />
         </div>
       </Section>
 
@@ -822,6 +836,7 @@ export default function AgencyDetailPage({ params }: { params: Promise<{ id: str
       <Section title="Workflow esteso">
         <Field
           label="Ultima verifica editoriale"
+          k="last_verified_at"
           value={
             agency.last_verified_at
               ? new Date(agency.last_verified_at).toLocaleString("it-IT")
@@ -877,9 +892,10 @@ export default function AgencyDetailPage({ params }: { params: Promise<{ id: str
             ) : null
           }
         />
-        <Field label="Note curatore" value={agency.note_curatore} />
+        <Field label="Note curatore" k="note_curatore" value={agency.note_curatore} />
         <Field label="Aggiornato" value={new Date(agency.updated_at).toLocaleString("it-IT")} />
       </Section>
     </div>
+    </AgencyEditProvider>
   );
 }
