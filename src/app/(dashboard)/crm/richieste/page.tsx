@@ -25,6 +25,7 @@ interface Richiesta {
   note: string | null;
   email_inviata: boolean | null;
   contact_id: string | null;
+  agency_id: string | null;
   created_at: string;
 }
 
@@ -67,6 +68,126 @@ const CAMPI: Record<Tipo, [string, string][]> = {
     ["relazione", "Relazione con l'agenzia"],
     ["note", "Note per la redazione"],
   ],
+};
+
+interface Agenzia {
+  id: string;
+  title: string;
+  sito_web: string | null;
+  citta: string | null;
+  publish_status: string | null;
+  status_curatela: string | null;
+  motivo?: string;
+}
+
+// Riquadro di una proposta: l'agenzia collegata, oppure le candidate trovate tra le agenzie del
+// dominio (stesso sito, nome simile) da collegare, oppure la creazione di una bozza dai dati del form.
+function AgenziaProposta({ richiesta, onCollegata }: { richiesta: Richiesta; onCollegata: (agencyId: string | null) => void }) {
+  const [stato, setStato] = useState<{ collegata: Agenzia | null; candidate: Agenzia[] } | null>(null);
+  const [occupato, setOccupato] = useState(false);
+  const [errore, setErrore] = useState<string | null>(null);
+  const percorso = `/api/requests/${richiesta.id}/agenzia`;
+
+  const carica = useCallback(async () => {
+    try {
+      setStato(await apiStaff<{ collegata: Agenzia | null; candidate: Agenzia[] }>(percorso));
+    } catch (e) {
+      setErrore((e as Error).message);
+    }
+  }, [percorso]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- caricamento all'apertura del dettaglio
+    carica();
+  }, [carica]);
+
+  async function esegui(init: RequestInit) {
+    setOccupato(true);
+    setErrore(null);
+    try {
+      const { collegata } = await apiStaff<{ collegata: Agenzia | null }>(percorso, init);
+      onCollegata(collegata?.id ?? null);
+      if (collegata) setStato({ collegata, candidate: [] });
+      else await carica();
+    } catch (e) {
+      setErrore((e as Error).message);
+    }
+    setOccupato(false);
+  }
+
+  const descrizione = (a: Agenzia) =>
+    [a.citta, a.publish_status === "draft" ? "bozza" : a.publish_status, a.status_curatela].filter(Boolean).join(" · ");
+
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div className="lb">Agenzia</div>
+      {!stato ? (
+        <p className="muted" style={{ fontSize: 12 }}>
+          {errore ?? "Ricerca…"}
+        </p>
+      ) : stato.collegata ? (
+        <div style={{ fontSize: 13 }}>
+          <Link href={`/agenzie/${stato.collegata.id}`} style={{ color: "var(--accent)", fontWeight: 600 }}>
+            {stato.collegata.title}
+          </Link>
+          <div className="muted" style={{ fontSize: 12 }}>
+            {descrizione(stato.collegata)}
+          </div>
+          <button type="button" disabled={occupato} onClick={() => esegui({ method: "DELETE" })} style={linkBtn}>
+            Scollega
+          </button>
+        </div>
+      ) : (
+        <div style={{ display: "grid", gap: 6, fontSize: 13 }}>
+          {stato.candidate.length ? (
+            stato.candidate.map((a) => (
+              <div key={a.id} style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "start" }}>
+                <div style={{ minWidth: 0 }}>
+                  <Link href={`/agenzie/${a.id}`} target="_blank" style={{ color: "var(--accent)" }}>
+                    {a.title}
+                  </Link>
+                  <div className="muted" style={{ fontSize: 11 }}>
+                    {[a.motivo, descrizione(a)].filter(Boolean).join(" · ")}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={occupato}
+                  onClick={() => esegui({ method: "POST", body: JSON.stringify({ agency_id: a.id }) })}
+                  style={linkBtn}
+                >
+                  Collega
+                </button>
+              </div>
+            ))
+          ) : (
+            <span className="muted" style={{ fontSize: 12 }}>
+              Nessuna agenzia con questo sito o nome.
+            </span>
+          )}
+          <button
+            type="button"
+            disabled={occupato}
+            onClick={() => esegui({ method: "POST", body: JSON.stringify({ crea: true }) })}
+            style={{ ...inputStyle, cursor: "pointer", marginTop: 4 }}
+          >
+            Crea bozza dai dati del form
+          </button>
+        </div>
+      )}
+      {stato && errore && <p style={{ color: "var(--red)", fontSize: 12, marginTop: 6 }}>{errore}</p>}
+    </div>
+  );
+}
+
+const linkBtn: React.CSSProperties = {
+  background: "none",
+  border: 0,
+  padding: 0,
+  color: "var(--accent)",
+  fontSize: 12,
+  fontFamily: "inherit",
+  cursor: "pointer",
 };
 
 const valore = (v: string | string[] | undefined) => (Array.isArray(v) ? v.join(", ") : (v ?? ""));
@@ -216,6 +337,7 @@ export default function RichiestePage() {
                 <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{titolo(r)}</span>
                 <span style={{ display: "flex", gap: 6, fontSize: 11 }}>
                   {r.email_inviata === false && <span style={{ color: "var(--red)" }}>email non partita</span>}
+                  {r.tipo === "proponi" && !r.agency_id && r.stato !== "spam" && <span style={{ color: "var(--accent)" }}>da collegare</span>}
                   <span className="muted">{STATI[r.stato]}</span>
                 </span>
               </button>
@@ -262,6 +384,12 @@ export default function RichiestePage() {
                   </dl>
 
                   <div>
+                    {r.tipo === "proponi" && (
+                      <AgenziaProposta
+                        richiesta={r}
+                        onCollegata={(agencyId) => setRighe((rr) => rr.map((x) => (x.id === r.id ? { ...x, agency_id: agencyId } : x)))}
+                      />
+                    )}
                     <div className="lb">Stato</div>
                     <select
                       value={r.stato}

@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
 
   let q = auth.supabase
     .from("site_requests")
-    .select("id, tipo, dati, email, pagina, stato, note, email_inviata, contact_id, created_at, updated_at")
+    .select("id, tipo, dati, email, pagina, stato, note, email_inviata, contact_id, agency_id, created_at, updated_at")
     .eq("domain_id", domainId)
     .order("created_at", { ascending: false })
     .limit(500);
