@@ -2,9 +2,11 @@
 
 // Richieste: gli invii dei form del sito pubblico ("Raccontaci cosa cerchi", "Proponi un'agenzia"),
 // del dominio corrente. Prendono il posto di Flamingo sul vecchio WordPress. Le email partono dal
-// sito al momento dell'invio; qui si leggono, si cambia lo stato e si annota.
+// sito al momento dell'invio; qui si leggono, si cambia lo stato e si annota. Il mittente viene
+// censito nei Contatti dal database al momento dell'invio (migrazione 0038).
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { useDomain } from "@/components/DomainProvider";
 import { apiStaff, inputStyle } from "@/components/content/api";
 
@@ -19,6 +21,7 @@ interface Richiesta {
   stato: Stato;
   note: string | null;
   email_inviata: boolean | null;
+  contact_id: string | null;
   created_at: string;
 }
 
@@ -198,6 +201,16 @@ export default function RichiestePage() {
                         </div>
                       ) : null,
                     )}
+                    <dt className="muted">Contatto CRM</dt>
+                    <dd style={{ margin: 0 }}>
+                      {r.contact_id && r.email ? (
+                        <Link href={`/crm/contacts?q=${encodeURIComponent(r.email)}`} style={{ color: "var(--accent)" }}>
+                          Apri nei Contatti
+                        </Link>
+                      ) : (
+                        <span className="muted">non censito</span>
+                      )}
+                    </dd>
                     {r.pagina && (
                       <>
                         <dt className="muted">Inviata da</dt>

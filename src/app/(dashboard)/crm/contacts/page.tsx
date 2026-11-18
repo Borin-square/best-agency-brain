@@ -56,6 +56,13 @@ export default function CRMContactsPage() {
     }
   }, [currentDomainId, q]);
 
+  // ?q= nell'URL (es. dal link "Apri nei Contatti" di una richiesta) precompila la ricerca.
+  useEffect(() => {
+    const iniziale = new URLSearchParams(window.location.search).get("q");
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- letto una volta al montaggio
+    if (iniziale) setQ(iniziale);
+  }, []);
+
   useEffect(() => {
     load();
   }, [load]);

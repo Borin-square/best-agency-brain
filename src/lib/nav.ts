@@ -27,11 +27,11 @@ export const MAIN_NAV: NavItem[] = [
       { id: "crm-dashboard", label: "Dashboard", href: "/crm" },
       { id: "crm-contacts", label: "Contatti", href: "/crm/contacts" },
       { id: "crm-deals", label: "Deals", href: "/crm/deals" },
+      { id: "crm-richieste", label: "Richieste", href: "/crm/richieste" },
       { id: "crm-campaigns", label: "Campagne", href: "/crm/campaigns" },
     ],
   },
   { id: "content", label: "Contenuti", href: "/content", icon: "☰" },
-  { id: "richieste", label: "Richieste", href: "/richieste", icon: "✎" },
 ];
 
 export const FOOTER_NAV: NavItem[] = [

@@ -1,5 +1,6 @@
 // Richieste arrivate dai form del sito pubblico (tabella site_requests, migrazione 0036): elenco
-// per dominio, le più recenti prima. Filtri facoltativi: stato e tipo.
+// per dominio, le più recenti prima, con il contatto CRM del mittente (migrazione 0038).
+// Filtri facoltativi: stato e tipo.
 
 import { NextResponse, type NextRequest } from "next/server";
 import { requireStaff } from "@/lib/api-auth";
@@ -16,7 +17,7 @@ export async function GET(req: NextRequest) {
 
   let q = auth.supabase
     .from("site_requests")
-    .select("id, tipo, dati, email, pagina, stato, note, email_inviata, created_at, updated_at")
+    .select("id, tipo, dati, email, pagina, stato, note, email_inviata, contact_id, created_at, updated_at")
     .eq("domain_id", domainId)
     .order("created_at", { ascending: false })
     .limit(500);
