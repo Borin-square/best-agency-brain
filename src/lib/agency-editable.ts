@@ -40,9 +40,8 @@ export const EDITABLE_FIELDS: Record<string, EditSpec> = {
   competenze_principali: t("tags", { max: 5 }),
   altre_competenze: t("tags", { max: 10 }),
   caratteristiche: t("tags"),
-  aree: t("text"),
-  citta: t("text"),
-  regioni: t("text"),
+  // aree, citta, regioni: calcolati dalle sedi (agency_sedi, migrazione 0044), si cambiano dalla
+  // sezione Sedi della scheda.
 
   // Contatti & sede
   sito_web: t("text"),

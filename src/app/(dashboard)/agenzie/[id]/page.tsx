@@ -5,6 +5,7 @@ import { use, useEffect, useState } from "react";
 import { computeAgencyScore, type ScorableAgency } from "@/lib/agency-score";
 import { LogoEditor, type LogoMeta } from "@/components/agency/LogoEditor";
 import { AgencyEditProvider, Field } from "@/components/agency/EditableField";
+import { SediEditor } from "@/components/agency/SediEditor";
 
 interface Agency {
   id: string;
@@ -273,8 +274,6 @@ export default function AgencyDetailPage({ params }: { params: Promise<{ id: str
         setSuggestions({
           verifica: d.verifica ?? [],
           status_curatela: d.status_curatela ?? [],
-          regioni: d.regioni ?? [],
-          citta: d.citta ?? [],
         });
       })
       .catch(() => {});
@@ -463,12 +462,20 @@ export default function AgencyDetailPage({ params }: { params: Promise<{ id: str
           <Field label="Altre competenze (max 10)" k="altre_competenze" value={arr(agency.altre_competenze)} />
         </div>
         <Field label="Caratteristiche" k="caratteristiche" value={arr(agency.caratteristiche)} />
-        <Field label="Aree" k="aree" value={agency.aree} />
+        <Field label="Aree (dalle sedi)" value={agency.aree} />
         <Field label="Verifica" k="verifica" value={agency.verifica} />
-        <Field label="Città" k="citta" value={agency.citta} mono />
-        <Field label="Regione" k="regioni" value={agency.regioni} mono />
+        <Field label="Città (sede principale)" value={agency.citta} mono />
+        <Field label="Regione (sede principale)" value={agency.regioni} mono />
         <Field label="Google Partner" k="google_partner_cert" value={agency.google_partner_cert == null ? null : agency.google_partner_cert ? "Sì" : "No"} />
       </Section>
+
+      {agency.domain_id && (
+        <SediEditor
+          agencyId={agency.id}
+          domainId={agency.domain_id}
+          onGeo={(geo) => setAgency((a) => (a ? { ...a, ...geo } : a))}
+        />
+      )}
 
       <Section title="Contatti & sede">
         <Field label="Sito web" k="sito_web" value={link(agency.sito_web)} />
