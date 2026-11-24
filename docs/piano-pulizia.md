@@ -71,15 +71,85 @@ dopo aver guardato in Search Console quante hanno impression (connettore Markifa
   1.616 sedi, aree del sito invariate (tranne Zero Digitale). Restano scheda Sedi e agenti
   ([sedi-progetto.md](sedi-progetto.md)).
 - Zero Digitale (ex "Zero Digital E"): nuovo URL `zero-digitale` con 301, due sedi.
+- Sezione Sedi nella scheda (`0045`: ricerca comuni, sede principale) e vista `site.agency_sedi`
+  per il sito (`0046`).
+- Foglio dei controlli manuali per la persona che verifica i dati:
+  [Controlli manuali agenzie](https://claude.ai/artifact/1FNx6pBevvkXRFo5vZiihz) (privato
+  finché non lo si condivide). Foglio "Controlli": 179 righe (senza sede in Italia, unioni sbagliate,
+  doppioni, titoli, competenze, sedi da verificare, 4 unioni automatiche da controllare). Foglio
+  "Sedi da completare": 313 sedi con la sola provincia.
+- Coda Quality pulita: chiuse a mano 463 segnalazioni "enrichment_failing" dovute al credito OpenAI
+  (`superseded`) e 34 su 13 agenzie cestinate per scelta (`trashed`). Da 721 a 224 aperte. Restano
+  aperte apposta MAYANprojects e A-Channel (nel foglio) e le 4 unite dall'agente (Brescia Events,
+  Digitalificio, Web Zone, WhiteLab Cuneo).
+
+- Ranking degli elenchi spostato nel brain (`0047_ranking`): tabella `ranking_config` (pesi per
+  dominio), viste `agency_punteggi` e `site.agency_punteggi`. Il sito ordina con quei punteggi;
+  parità verificata (5.644 pagine, zero differenze). Dettagli nel doc del sito, "Ranking dal brain".
+
+## Decisioni del 24/11/2026
+
+- **Lancio del sito nuovo: settimana del 30/11/2026.** Prima del lancio: pulizia del DB, confronto con
+  il live per non perdere pagine indicizzate (combo fatte con la whitelist; restano le schede
+  agenzia), coda Quality.
+- **Scouter dopo il lancio.** Il prossimo scouting è fra qualche settimana: la correzione della
+  deduplica (`dedup.ts`) si fa prima di quello, non prima del lancio.
+- **`verifica` = profilo verificato a pagamento.** Solo le agenzie con abbonamento attivo, con il badge
+  sul sito. Non va usato per dire che i dati sono stati controllati. Oggi è vuoto su tutte.
+- **Ranking nel brain**, non nel sito: serve a CRM e newsletter (es. invito a verificare il profilo
+  alle agenzie fra le prime 20 di una pagina), al peso della verifica e agli spazi in evidenza.
+- **Dopo il lancio, per il CRM:** tabella abbonamenti (inizio, scadenza, deal del CRM; `verifica`
+  calcolato da lì e badge che scade da solo), fotografia periodica delle posizioni per pagina,
+  disiscrizioni e storico invii, strumento di invio delle campagne.
+- **`status_curatela`** (oggi "proposta" su tutte le 1.752): proposta di usarlo come segno di controllo
+  redazionale (verificata = controllata da una persona, gli agenti non toccano i campi; rifiutata =
+  motivo del cestino, lo scouter non la ripropone). Da confermare.
+
+## Per andare online (lancio previsto la settimana del 30/11/2026)
+
+Dove siamo al 24/11 sera: sedi fatte (DB, scheda, vista per il sito), ranking nel brain, combo
+indicizzate protette dalla whitelist, coda Quality pulita (224 aperte), foglio dei controlli manuali
+in mano alla persona che verifica i dati. Agenti updater e quality-check in pausa, OpenAI spento.
+
+Manca, in ordine:
+1. **Ambiente di staging**: mai discusso. Prossimo argomento: dove gira il sito nuovo prima del
+   lancio, con quali dati, come si prova senza toccare il live e il DB di produzione.
+2. **Foglio dei controlli su Google Sheets**: la persona che verifica non può modificare il foglio
+   su claude.ai (solo lettura). Da creare il Google Sheet con le due schede e condividerlo come Editor.
+3. **Confronto con il live per le schede agenzia**: ogni URL `/agenzia/...` del live → 200, 301 o 410
+   voluto sul nuovo, partendo da quelle con impression in Search Console. Le combo sono già coperte.
+4. **Pagina Quality**: colonna con lo stato dell'agenzia, filtro di base sulle pubblicate.
+5. **`status_curatela`**: da confermare l'uso come "controllata da una persona" (tendina, data
+   automatica, istruzione nel foglio).
+6. **Risultati dei controlli manuali**: pubblicate senza sede in Italia (41 senza sedi, 16 solo
+   estere), unioni sbagliate da ripubblicare, doppioni, sedi da completare. Poi il blocco "niente
+   publish senza sede italiana".
+7. **Punti aperti del doc del sito** (`miglioreagenzia-next/docs/rebuild.md`, "Criticità e dubbi"):
+   competenze del live senza pagina (301 o 404), "In evidenza" (11 posizioni di Square Marketing e
+   Virality Solution, alcune dove non hanno sede: decisione commerciale), etichette delle competenze.
+8. Verificare `0037_testi_seo_come_live.sql` (vedi "Da verificare subito").
+
+Dopo il lancio: scouter (deduplica), regole nuove di quality-check e updater prima di riaccenderli,
+rinomina "Monza e della Brianza" → "Monza e Brianza" (4-8 settimane), CRM (abbonamenti, posizioni,
+newsletter).
 
 ## Da fare nel brain
 
 - Elenco delle combo in whitelist sotto le 5 agenzie (oggi 5: `google-ads/ferrara` con 1 agenzia).
-- Lista dei controlli per la persona che verifica i dati (dopo aver saputo cosa è già stato fatto a
-  mano).
-- Scouter: la deduplica legge solo 1.000 agenzie (`dedup.ts`); non lanciarlo finché non è corretto.
-- Quality-check: niente azioni automatiche sulle pubblicate, nell'unione vince la pubblicata, 301
-  verso la vincente.
+- Pagina Quality: colonna con lo stato dell'agenzia e filtro di base sulle pubblicate.
+- Scouter (dopo il lancio): la deduplica legge solo 1.000 agenzie (`dedup.ts`); non lanciarlo finché
+  non è corretto.
+- Quality-check, prima di riaccenderlo:
+  - niente azioni automatiche sulle pubblicate, solo segnalazioni; nell'unione vince la pubblicata,
+    301 verso la vincente;
+  - gli errori di sistema (credito OpenAI, timeout) non diventano segnalazioni;
+  - una segnalazione chiusa dall'agente (`fixed`) o per il credito (`superseded`) si riapre se il
+    problema torna: oggi `upsertIssue` non riapre mai una riga chiusa; restano chiuse solo quelle
+    decise da una persona (`resolved_by` valorizzato o `ignored`/`trashed` a mano);
+  - le segnalazioni delle agenzie che vanno nel cestino si chiudono da sole.
+- Updater, scouter, import CSV e backfill-geo da adattare alle sedi (sedi-progetto.md §5).
+- Le pubblicate ancora senza sede in Italia (al 24/11: 41 senza sedi, 16 solo estere): quando la
+  persona che verifica le ha sistemate, attivare il blocco "niente publish senza sede italiana".
 - Updater: competenze e descrizioni solo se vuote sulle pubblicate; non svuotare mai le competenze.
 
 ## Da verificare subito

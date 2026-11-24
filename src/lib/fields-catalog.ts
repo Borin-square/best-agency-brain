@@ -1275,7 +1275,8 @@ export const FIELDS_CATALOG: FieldDefinition[] = [
     label: "Verifica",
     category: "Workflow",
     type: "text",
-    description: "Stato rivendicazione/verifica: verified | to-review | pending. Manuale.",
+    description:
+      "Profilo verificato: solo le agenzie con abbonamento a pagamento attivo (badge \"verificata\" sul sito). verified = abbonamento attivo; vuoto = nessun abbonamento. Non indica che i dati sono stati controllati: per quello c'è status_curatela. Manuale.",
     source: "manual",
     updatePolicy: "manual_only",
     verifiedBehavior: "Il valore stesso — non toccato dagli agenti.",
@@ -1288,7 +1289,8 @@ export const FIELDS_CATALOG: FieldDefinition[] = [
     label: "Status curatela",
     category: "Workflow",
     type: "text",
-    description: "Maturità curatoriale: proposta, verificata, rifiutata.",
+    description:
+      "Controllo redazionale della scheda: proposta (non ancora controllata), verificata (controllata da una persona), rifiutata (non va pubblicata). Non c'entra con l'abbonamento (campo verifica). Al 24/11/2026 tutte le agenzie sono \"proposta\".",
     source: "manual",
     updatePolicy: "manual_only",
     verifiedBehavior: V_NEVER,

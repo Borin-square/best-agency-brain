@@ -11,7 +11,7 @@ Next.js 16 App Router + Supabase (auth+db+storage) + Tailwind 4 + Vercel Cron. P
 
 ## Sezioni (`src/app/(dashboard)/`, nav in `src/lib/nav.ts`)
 - **Overview**: KPI agenzie
-- **Agenzie**: lista con filtri, colonne configurabili e mappa; scheda di dettaglio con modifica in linea dei campi (whitelist in `src/lib/agency-editable.ts`, i campi salvati finiscono in `manual_fields` e l'agency-updater non li sovrascrive); import/export CSV (v1 e v2), stats
+- **Agenzie**: lista con filtri, colonne configurabili e mappa; scheda di dettaglio con modifica in linea dei campi (whitelist in `src/lib/agency-editable.ts`, i campi salvati finiscono in `manual_fields` e l'agency-updater non li sovrascrive); import/export CSV (v1 e v2), stats. Sedi (`agency_sedi`, comune ISTAT da `comuni`): principale + secondarie, estere solo come dato; da qui il DB calcola `agency_areas` e i testi `aree`/`citta`/`regioni` (docs/sedi-progetto.md)
 - **Fields**: documentazione dei campi della tabella `agencies` (`src/lib/fields-catalog.ts`)
 - **Quality**: coda delle issue aperte (`agency_issues`) prodotte da agency-quality-check, da rivedere a mano
 - **Competenze**: lista controllata di skill (slug immutabile, campi SEO, guide, correlate); export CSV
@@ -33,12 +33,12 @@ Ogni agente ha `config.ts` + `run.ts` + `sources/`; registrati in `registry.ts`,
 
 | id | Frequenza | Funzione |
 |---|---|---|
-| agency-updater | ogni 30 min | Arricchimento: scrape sito + estrazione LLM, Google Places, VIES, geo |
+| agency-updater | ogni 60 min (in pausa dal 24/11/2026) | Arricchimento: scrape sito + estrazione LLM, Google Places, VIES, geo |
 | agency-scouter | manuale | Trova nuove agenzie (directory, premi, SERP), dedup, inserisce come draft |
-| agency-visual-enrichment | ogni ora | Logo, foto team, portfolio → Supabase Storage |
-| agency-quality-check | giornaliero 04:00 | Duplicati, siti morti, dati vuoti; auto-trash blacklist, auto-merge duplicati hard |
-| agency-serp-position | settimanale | Posizione di miglioreagenzia.it per "nome agenzia + città" (DataForSEO) |
-| matrice-serp-position | settimanale | Posizione SERP per cella area × competenza con ≥5 agenzie |
+| agency-visual-enrichment | ogni 6 ore | Logo, foto team, portfolio → Supabase Storage |
+| agency-quality-check | ogni 6 ore (in pausa dal 24/11/2026) | Duplicati, siti morti, dati vuoti; auto-trash blacklist, auto-merge duplicati hard. Unico autore delle issue in Quality |
+| agency-serp-position | ogni 6 ore (ogni agenzia ricontrollata dopo 6 giorni) | Posizione di miglioreagenzia.it per "nome agenzia + città" (DataForSEO) |
+| matrice-serp-position | ogni 6 ore | Posizione SERP per cella area × competenza con ≥5 agenzie |
 | radar-enricher | ogni 15 min | IP → azienda (AbstractAPI + reverse DNS), batch 50 |
 
 Lo `schedule` nei config è indicativo: la fonte di verità è la tabella `agent_schedules`, letta da `/api/cron/dispatch`.
@@ -54,7 +54,10 @@ Lo `schedule` nei config è indicativo: la fonte di verità è la tabella `agent
 - `/api/cron/radar-truncate`: giornaliero 03:00, pulizia dati Radar
 
 ## Database
-Migrazioni in `supabase/migrations/` numerate in sequenza (`00NN_nome.sql`).
+Migrazioni in `supabase/migrations/` numerate in sequenza (`00NN_nome.sql`). Le lancia l'utente dall'SQL Editor, una alla volta; prima si provano su una copia locale (PGlite) con i dati reali.
+Il sito legge solo le viste dello schema `site` (ruolo `site_reader`). Per le analisi c'è il ruolo in sola lettura `brain_ro` (`BRAIN_RO_DATABASE_URL` in `.env.local`).
+Campi di workflow: `verifica` = profilo verificato, solo per le agenzie con abbonamento a pagamento; `status_curatela` = controllo redazionale della scheda (proposta / verificata / rifiutata).
+Lo stato della pulizia dei dati è in `docs/piano-pulizia.md`.
 
 ## Workflow
 Main-only, no dev branch. Deploy su Vercel.
