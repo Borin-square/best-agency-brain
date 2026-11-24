@@ -187,9 +187,13 @@ sbagliato:
 ## 7. Cosa cambia per il sito
 
 - `site.agency_areas`: **stessa forma**, alimentata dalle sedi. Archivi e combo non cambiano codice.
-- Nuova vista `site.agency_sedi` (solo agenzie pubblicate): `agency_id`, `principale`, `paese`,
-  `comune`, `sigla`, `area_slug`, `citta_estera`, `indirizzo`. Serve per la scheda e per il JSON-LD
-  (un'organizzazione con più indirizzi).
+- Nuova vista `site.agency_sedi` (solo agenzie pubblicate, migrazione `0046`): `agency_id`,
+  `sede_id`, `ordine` (1 = principale, poi le italiane per comune, poi le estere), `principale`,
+  `paese`, `completa`, `comune`, `sigla`, `provincia_slug`, `provincia`, `regione_slug`, `regione`,
+  `citta_estera`, `indirizzo`, `etichetta` ("Cinisello Balsamo (MI)", "Provincia di Padova",
+  "Lugano"). Le sedi da completare (`completa = false`) hanno solo provincia e regione, senza
+  indirizzo. Il nome del paese delle sedi estere lo ricava il sito dal codice ISO. Serve per la
+  scheda e per il JSON-LD (un'organizzazione con più indirizzi).
 - Nessun filtro "almeno una sede in Italia" nel sito: lo garantisce il DB (§3).
 - Da annotare nel doc del sito quando le viste sono pronte.
 
@@ -212,7 +216,7 @@ c'è la sezione Sedi (passo 5).
 | 6 | Updater, scouter, import CSV, backfill-geo come al §5 | brain | nessuno (agenti in pausa) |
 | 7 | Sedi per le 23 con indirizzo leggibile; elenco discordanze e "da completare" alla persona che verifica | dati | le 23 entrano negli archivi |
 | 8 | Le pubblicate ancora senza sede italiana escono da `publish` (410); poi si attiva la garanzia del §3 | dati + DB | 410 su quelle schede |
-| 9 | Vista `site.agency_sedi`; scheda e JSON-LD sul sito | DB + sito | sedi visibili |
+| 9 | Vista `site.agency_sedi` (`0046`, pronta); scheda e JSON-LD sul sito | DB + sito | sedi visibili |
 
 Ogni migrazione si prova prima su una copia locale (PGlite) con le colonne e i dati reali, e si lancia
 dall'SQL Editor una alla volta.
